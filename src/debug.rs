@@ -1,5 +1,5 @@
 use super::chunk;
-use chunk::{Chunk, OpCode};
+use chunk::*;
 
 pub fn disassemble(chunk: &Chunk, name: &str) {
     println!("== {name} ==");
@@ -12,14 +12,21 @@ pub fn disassemble(chunk: &Chunk, name: &str) {
 pub fn disassemble_instruction(chunk: &Chunk, offset: usize) -> usize {
     print!("{offset:04} ");
     let instruction = chunk[offset];
-    const OP_RETURN: u8 = OpCode::OpReturn as u8;
     match instruction {
+        OP_CONSTANT => constant_instruction("OP_CONSTANT", chunk, offset),
         OP_RETURN => simple_instruction("OP_RETURN", offset),
         _ => {
             println!("Unknown opcode {instruction}");
             offset + 1
         }
     }
+}
+
+fn constant_instruction(name: &str, chunk: &Chunk, offset: usize) -> usize {
+    let constant = chunk[offset];
+    let value = chunk.constants()[constant as usize];
+    println!("{name} {constant:04} {value}");
+    offset + 2
 }
 
 fn simple_instruction(name: &str, offset: usize) -> usize {
