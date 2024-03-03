@@ -13,6 +13,7 @@ pub const OP_RETURN: u8 = OpCode::OpReturn as u8;
 #[derive(Debug, Default)]
 pub struct Chunk {
     code: Vec<u8>,
+    lines: Vec<i32>,
     constants: ValueArray
 }
 
@@ -25,8 +26,9 @@ impl Chunk {
         self.code.len()
     }
 
-    pub fn write(&mut self, byte: u8) {
-        self.code.push(byte)
+    pub fn write(&mut self, byte: u8, line: i32) {
+        self.code.push(byte);
+        self.lines.push(line);
     }
 
     pub fn add_constant(&mut self, value: Value) -> usize {
@@ -36,6 +38,10 @@ impl Chunk {
 
     pub fn constants(&self) -> &[Value] {
         &self.constants
+    }
+
+    pub fn lines(&self) -> &[i32] {
+        &self.lines
     }
 
     pub fn iter(&self) -> impl Iterator<Item = &u8> {

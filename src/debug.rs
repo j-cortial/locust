@@ -11,6 +11,12 @@ pub fn disassemble(chunk: &Chunk, name: &str) {
 
 pub fn disassemble_instruction(chunk: &Chunk, offset: usize) -> usize {
     print!("{offset:04} ");
+    if offset > 0 && chunk.lines()[offset] == chunk.lines()[offset] {
+        print!("   | ");
+    } else {
+        let line = chunk.lines()[offset];
+        print!("{line:4} ");
+    }
     let instruction = chunk[offset];
     match instruction {
         OP_CONSTANT => constant_instruction("OP_CONSTANT", chunk, offset),
@@ -25,7 +31,7 @@ pub fn disassemble_instruction(chunk: &Chunk, offset: usize) -> usize {
 fn constant_instruction(name: &str, chunk: &Chunk, offset: usize) -> usize {
     let constant = chunk[offset];
     let value = chunk.constants()[constant as usize];
-    println!("{name} {constant:04} {value}");
+    println!("{name:16} {constant:4} '{value}'");
     offset + 2
 }
 

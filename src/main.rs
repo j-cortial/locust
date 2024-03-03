@@ -12,9 +12,9 @@ fn main() -> Result<(), ()> {
 
     let mut chunk = Chunk::new();
     let constant = chunk.add_constant(1.2);
-    chunk.write(OpCode::OpConstant as u8);
-    chunk.write(constant as u8);
-    chunk.write(OpCode::OpReturn as u8);
+    chunk.write(OpCode::OpConstant as u8, 123);
+    chunk.write(constant as u8, 123);
+    chunk.write(OpCode::OpReturn as u8, 123);
     disassemble(&chunk, "test chunk");
 
     Ok(())
