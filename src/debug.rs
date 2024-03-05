@@ -1,4 +1,4 @@
-use super::chunk;
+use crate::chunk;
 use chunk::*;
 
 pub fn disassemble(chunk: &Chunk, name: &str) {

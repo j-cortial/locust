@@ -28,3 +28,7 @@ impl ValueArray {
         self.values.len()
     }
 }
+
+pub fn print_value(value: Value) {
+    print!("{value}");
+}

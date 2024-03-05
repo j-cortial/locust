@@ -1,9 +1,13 @@
 mod chunk;
+use chunk::{Chunk, OpCode};
+
 mod value;
-use chunk::{Chunk, OpCode, OP_CONSTANT};
 
 mod debug;
 use debug::disassemble;
+
+mod vm;
+use vm::VM;
 
 use std::env;
 
@@ -15,6 +19,8 @@ fn main() -> Result<(), ()> {
     chunk.write(OpCode::OpConstant as u8, 123);
     chunk.write(constant as u8, 123);
     chunk.write(OpCode::OpReturn as u8, 123);
+    let mut vm = VM::new(&chunk);
+    vm.interpret();
     disassemble(&chunk, "test chunk");
 
     Ok(())

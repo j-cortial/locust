@@ -1,6 +1,7 @@
-use std::ops::Index;
-use super::value;
+use crate::value;
 use value::{Value, ValueArray};
+
+use std::ops::Index;
 
 pub enum OpCode {
     OpConstant,
