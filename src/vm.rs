@@ -1,10 +1,9 @@
-use std::fmt::Display;
+use std::{fmt::Display, ops::{Add, Sub, Mul, Div}};
 
 use crate::{
-    chunk::{self, OP_CONSTANT},
+    chunk::{Chunk, OP_ADD, OP_CONSTANT, OP_DIVIDE, OP_MULTIPLY, OP_NEGATE, OP_RETURN, OP_SUBTRACT},
     debug::disassemble_instruction,
 };
-use chunk::{Chunk, OP_RETURN};
 
 use crate::value;
 use value::Value;
@@ -49,10 +48,26 @@ impl<'a> VM<'a> {
                     let constant = self.chunk.constants()[self.read_byte() as usize];
                     self.stack.push(constant);
                 }
+                OP_ADD => {
+                    binary_op(&mut self.stack, Add::add);
+                }
+                OP_SUBTRACT => {
+                    binary_op(&mut self.stack, Sub::sub);
+                }
+                OP_MULTIPLY => {
+                    binary_op(&mut self.stack, Mul::mul);
+                }
+                OP_DIVIDE => {
+                    binary_op(&mut self.stack, Div::div);
+                }
+                OP_NEGATE => {
+                    let value = self.stack.pop();
+                    self.stack.push(-value);
+                }
                 OP_RETURN => {
                     println!("{}", self.stack.pop());
                     return InterpretResult::Ok;
-                },
+                }
                 _ => {}
             }
         }
@@ -103,4 +118,13 @@ impl<const MAX_SIZE: usize> Display for ValueStack<MAX_SIZE> {
         }
         Ok(())
     }
+}
+
+fn binary_op<const MAX_SIZE: usize, F>(stack: &mut ValueStack<MAX_SIZE>, f: F)
+where
+    F: Fn(Value, Value) -> Value,
+{
+    let right = stack.pop();
+    let left = stack.pop();
+    stack.push(f(left, right));
 }

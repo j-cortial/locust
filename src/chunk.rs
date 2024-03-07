@@ -5,10 +5,20 @@ use std::ops::Index;
 
 pub enum OpCode {
     OpConstant,
+    OpAdd,
+    OpSubtract,
+    OpMultiply,
+    OpDivide,
+    OpNegate,
     OpReturn,
 }
 
 pub const OP_CONSTANT: u8 = OpCode::OpConstant as u8;
+pub const OP_ADD: u8 = OpCode::OpAdd as u8;
+pub const OP_SUBTRACT: u8 = OpCode::OpSubtract as u8;
+pub const OP_MULTIPLY: u8 = OpCode::OpMultiply as u8;
+pub const OP_DIVIDE: u8 = OpCode::OpDivide as u8;
+pub const OP_NEGATE: u8 = OpCode::OpNegate as u8;
 pub const OP_RETURN: u8 = OpCode::OpReturn as u8;
 
 #[derive(Debug, Default)]
