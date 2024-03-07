@@ -11,7 +11,7 @@ pub fn disassemble(chunk: &Chunk, name: &str) {
 
 pub fn disassemble_instruction(chunk: &Chunk, offset: usize) -> usize {
     print!("{offset:04} ");
-    if offset > 0 && chunk.lines()[offset] == chunk.lines()[offset] {
+    if offset > 0 && chunk.lines()[offset - 1] == chunk.lines()[offset] {
         print!("   | ");
     } else {
         let line = chunk.lines()[offset];
