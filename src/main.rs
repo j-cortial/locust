@@ -1,43 +1,59 @@
 mod chunk;
-use chunk::{Chunk, OP_ADD, OP_CONSTANT, OP_DIVIDE, OP_NEGATE, OP_RETURN};
-
-mod value;
-
 mod debug;
-use debug::disassemble;
-
+mod value;
 mod vm;
-use vm::VM;
 
-use std::env;
+use vm::{InterpretResult, VM};
 
-fn main() -> Result<(), ()> {
-    let _args: Vec<String> = env::args().collect();
+use std::{env, fs, io::Write, process::ExitCode};
 
-    let mut chunk = Chunk::new();
+fn main() -> ExitCode {
+    let args: Vec<String> = env::args().collect();
 
-    let constant = chunk.add_constant(1.2);
-    chunk.write(OP_CONSTANT, 123);
-    chunk.write(constant as u8, 123);
+    let mut vm = VM::new();
 
-    let constant = chunk.add_constant(3.4);
-    chunk.write(OP_CONSTANT, 123);
-    chunk.write(constant as u8, 123);
+    if args.len() == 1 {
+        repl(&mut vm);
+    } else if args.len() == 2 {
+        match run_file(&mut vm, &args[1]) {
+            Ok(_) => {}
+            Err(error_code) => return error_code,
+        }
+    } else {
+        eprintln!("Usage: locust [path]");
+    }
 
-    chunk.write(OP_ADD, 123);
+    ExitCode::SUCCESS
+}
 
-    let constant = chunk.add_constant(5.6);
-    chunk.write(OP_CONSTANT, 123);
-    chunk.write(constant as u8, 123);
+fn repl(vm: &mut VM) {
+    loop {
+        let mut line = String::new();
+        print!("> ");
+        let _ = std::io::stdout().flush();
+        std::io::stdin().read_line(&mut line).unwrap();
+        if line.starts_with('\n') {
+            break;
+        }
+        vm.interpret(&line);
+    }
+}
 
-    chunk.write(OP_DIVIDE, 123);
-    chunk.write(OP_NEGATE, 123);
+fn run_file(vm: &mut VM, path: &str) -> Result<(), ExitCode> {
+    let source = read_file(path)?;
+    match vm.interpret(&source) {
+        InterpretResult::Ok => Ok(()),
+        InterpretResult::CompileError => Err(ExitCode::from(65)),
+        InterpretResult::RuntimeError => Err(ExitCode::from(70)),
+    }
+}
 
-    chunk.write(OP_RETURN, 123);
-
-    let mut vm = VM::new(&chunk);
-    vm.interpret();
-    disassemble(&chunk, "test chunk");
-
-    Ok(())
+fn read_file(path: &str) -> Result<String, ExitCode> {
+    match fs::read_to_string(path) {
+        Ok(res) => Ok(res),
+        Err(_) => {
+            eprintln!("Could not open file \"{path}\"");
+            Err(ExitCode::from(74))
+        },
+    }
 }

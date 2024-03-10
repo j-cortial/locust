@@ -1,7 +1,12 @@
-use std::{fmt::Display, ops::{Add, Sub, Mul, Div}};
+use std::{
+    fmt::Display,
+    ops::{Add, Div, Mul, Sub},
+};
 
 use crate::{
-    chunk::{Chunk, OP_ADD, OP_CONSTANT, OP_DIVIDE, OP_MULTIPLY, OP_NEGATE, OP_RETURN, OP_SUBTRACT},
+    chunk::{
+        Chunk, OP_ADD, OP_CONSTANT, OP_DIVIDE, OP_MULTIPLY, OP_NEGATE, OP_RETURN, OP_SUBTRACT,
+    },
     debug::disassemble_instruction,
 };
 
@@ -10,8 +15,8 @@ use value::Value;
 
 const STACK_MAX: usize = 256;
 
-pub struct VM<'a> {
-    chunk: &'a Chunk,
+pub struct VM {
+    chunk: Chunk,
     ip: usize,
     stack: ValueStack<STACK_MAX>,
 }
@@ -22,17 +27,18 @@ pub enum InterpretResult {
     RuntimeError,
 }
 
-impl<'a> VM<'a> {
-    pub fn new(chunk: &'a Chunk) -> Self {
+impl VM {
+    pub fn new() -> Self {
         Self {
-            chunk,
+            chunk: Default::default(),
             ip: 0,
             stack: Default::default(),
         }
     }
 
-    pub fn interpret(&mut self) -> InterpretResult {
-        self.run()
+    pub fn interpret(&mut self, line: &str) -> InterpretResult {
+        self.compile(line);
+        InterpretResult::Ok
     }
 
     fn run(&mut self) -> InterpretResult {
@@ -40,12 +46,13 @@ impl<'a> VM<'a> {
             #[cfg(feature = "debug_trace_execution")]
             {
                 println!("          {}", self.stack);
-                disassemble_instruction(self.chunk, self.ip);
+                disassemble_instruction(&self.chunk, self.ip);
             }
             let instruction = self.read_byte();
             match instruction {
                 OP_CONSTANT => {
-                    let constant = self.chunk.constants()[self.read_byte() as usize];
+                    let index = self.read_byte() as usize;
+                    let constant = self.chunk.constants()[index];
                     self.stack.push(constant);
                 }
                 OP_ADD => {
