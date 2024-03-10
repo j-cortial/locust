@@ -8,6 +8,7 @@ use crate::{
         Chunk, OP_ADD, OP_CONSTANT, OP_DIVIDE, OP_MULTIPLY, OP_NEGATE, OP_RETURN, OP_SUBTRACT,
     },
     debug::disassemble_instruction,
+    compiler::compile,
 };
 
 use crate::value;
@@ -37,7 +38,7 @@ impl VM {
     }
 
     pub fn interpret(&mut self, line: &str) -> InterpretResult {
-        self.compile(line);
+        compile(line);
         InterpretResult::Ok
     }
 

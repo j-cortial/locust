@@ -2,6 +2,8 @@ mod chunk;
 mod debug;
 mod value;
 mod vm;
+mod compiler;
+mod scanner;
 
 use vm::{InterpretResult, VM};
 
