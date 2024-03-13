@@ -14,8 +14,10 @@ impl<'a> Scanner<'a> {
             line: 1,
         }
     }
+}
 
-    pub fn scan_token(&mut self) -> Token {
+impl<'t, 'a: 't> Scanner<'a> {
+    pub fn scan_token(&mut self) -> Token<'t> {
         self.skip_whitespace();
         self.start = self.current;
         if self.is_at_end() {
@@ -77,6 +79,60 @@ impl<'a> Scanner<'a> {
         }
     }
 
+    fn make_token(&self, kind: TokenType) -> Token<'t> {
+        Token {
+            kind,
+            span: &self.source[self.start..self.current],
+            line: self.line,
+        }
+    }
+
+    fn error_token(&self, message: &'static [u8]) -> Token<'t> {
+        Token {
+            kind: TokenType::Error,
+            span: message,
+            line: self.line,
+        }
+    }
+
+    fn identifier(&mut self) -> Token<'t> {
+        while is_alpha(self.peek()) && self.peek().is_ascii_digit() {
+            self.advance();
+        }
+        self.make_token(self.identifier_type())
+    }
+
+    fn number(&mut self) -> Token<'t> {
+        while self.peek().is_ascii_digit() {
+            self.advance();
+        }
+        // Look for a fractional part
+        if self.peek() == b'.' && self.peek_next().is_ascii_digit() {
+            // Consume the '.'
+            self.advance();
+            while self.peek().is_ascii_digit() {
+                self.advance();
+            }
+        }
+        self.make_token(TokenType::Number)
+    }
+
+    fn string(&mut self) -> Token<'t> {
+        while self.peek() != b'"' && !self.is_at_end() {
+            if self.peek() == b'\n' {
+                self.line += 1;
+            }
+            self.advance();
+        }
+        if self.is_at_end() {
+            return self.error_token(b"Unterminated string");
+        }
+        self.advance();
+        self.make_token(TokenType::String)
+    }
+}
+
+impl<'a> Scanner<'a> {
     fn is_at_end(&self) -> bool {
         self.current == self.source.len()
     }
@@ -108,22 +164,6 @@ impl<'a> Scanner<'a> {
             return false;
         }
         true
-    }
-
-    fn make_token(&self, kind: TokenType) -> Token {
-        Token {
-            kind,
-            span: &self.source[self.start..self.current],
-            line: self.line,
-        }
-    }
-
-    fn error_token(&self, message: &'static [u8]) -> Token {
-        Token {
-            kind: TokenType::Error,
-            span: message,
-            line: self.line,
-        }
     }
 
     fn skip_whitespace(&mut self) {
@@ -208,42 +248,6 @@ impl<'a> Scanner<'a> {
             b'w' => self.check_keyword(1, 4, b"hile", TokenType::While),
             _ => TokenType::Identifier,
         }
-    }
-
-    fn identifier(&mut self) -> Token {
-        while is_alpha(self.peek()) && self.peek().is_ascii_digit() {
-            self.advance();
-        }
-        self.make_token(self.identifier_type())
-    }
-
-    fn number(&mut self) -> Token {
-        while self.peek().is_ascii_digit() {
-            self.advance();
-        }
-        // Look for a fractional part
-        if self.peek() == b'.' && self.peek_next().is_ascii_digit() {
-            // Consume the '.'
-            self.advance();
-            while self.peek().is_ascii_digit() {
-                self.advance();
-            }
-        }
-        self.make_token(TokenType::Number)
-    }
-
-    fn string(&mut self) -> Token {
-        while self.peek() != b'"' && !self.is_at_end() {
-            if self.peek() == b'\n' {
-                self.line += 1;
-            }
-            self.advance();
-        }
-        if self.is_at_end() {
-            return self.error_token(b"Unterminated string");
-        }
-        self.advance();
-        self.make_token(TokenType::String)
     }
 }
 

@@ -5,16 +5,16 @@ use crate::{
 
 use std::str::from_utf8;
 
-struct Parser<'a> {
-    scanner: &'a mut Scanner<'a>,
+struct Parser<'s, 'a: 's> {
+    scanner: &'a mut Scanner<'s>,
     current: Option<Token<'a>>,
     previous: Option<Token<'a>>,
     had_error: bool,
     panic_mode: bool,
 }
 
-impl<'a> Parser<'a> {
-    fn new(scanner: &mut Scanner) -> Self {
+impl<'s, 'a: 's> Parser<'s, 'a> {
+    fn new(scanner: &'a mut Scanner<'s>) -> Self {
         Self {
             scanner,
             current: None,
@@ -27,23 +27,25 @@ impl<'a> Parser<'a> {
     fn advance(&mut self) {
         self.previous = self.current;
         loop {
-            self.current = Some(self.scanner.scan_token());
+            let token = self.scanner.scan_token();
+            self.current = Some(token);
             if self.current.unwrap().kind != TokenType::Error {
                 break;
             }
-            self.error_at_current(from_utf8(self.current.unwrap().span).unwrap());
+            let message = from_utf8(self.current.unwrap().span).unwrap();
+            self.error_at_current(message);
         }
     }
 
-    fn error_at_current(&self, message: &str) {
+    fn error_at_current(&mut self, message: &str) {
         self.error_at(&self.current.unwrap(), message);
     }
 
-    fn error(&self, message: &str) {
+    fn error(&mut self, message: &str) {
         self.error_at(&self.previous.unwrap(), message);
     }
 
-    fn error_at(&self, token: &Token, message: &str) {
+    fn error_at(&mut self, token: &Token, message: &str) {
         if self.panic_mode {
             return;
         }
