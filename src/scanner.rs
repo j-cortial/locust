@@ -14,8 +14,10 @@ impl<'a> Scanner<'a> {
             line: 1,
         }
     }
+}
 
-    pub fn scan_token(&mut self) -> Token {
+impl<'t, 'a: 't, 'b: 't> Scanner<'a> {
+    pub fn scan_token(&'b mut self) -> Token<'t> {
         self.skip_whitespace();
         self.start = self.current;
         if self.is_at_end() {
@@ -77,6 +79,24 @@ impl<'a> Scanner<'a> {
         }
     }
 
+    fn make_token(&'b self, kind: TokenType) -> Token<'t> {
+        Token {
+            kind,
+            span: &self.source[self.start..self.current],
+            line: self.line,
+        }
+    }
+
+    fn error_token(&'b self, message: &'static [u8]) -> Token<'t> {
+        Token {
+            kind: TokenType::Error,
+            span: message,
+            line: self.line,
+        }
+    }
+}
+
+impl<'a> Scanner<'a> {
     fn is_at_end(&self) -> bool {
         self.current == self.source.len()
     }
@@ -108,22 +128,6 @@ impl<'a> Scanner<'a> {
             return false;
         }
         true
-    }
-
-    fn make_token(&self, kind: TokenType) -> Token {
-        Token {
-            kind,
-            span: &self.source[self.start..self.current],
-            line: self.line,
-        }
-    }
-
-    fn error_token(&self, message: &'static [u8]) -> Token {
-        Token {
-            kind: TokenType::Error,
-            span: message,
-            line: self.line,
-        }
     }
 
     fn skip_whitespace(&mut self) {
