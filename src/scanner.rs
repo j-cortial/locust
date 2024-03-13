@@ -247,6 +247,7 @@ impl<'a> Scanner<'a> {
     }
 }
 
+#[derive(Clone, Copy)]
 pub struct Token<'a> {
     pub kind: TokenType,
     pub span: &'a [u8],
