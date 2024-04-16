@@ -261,7 +261,7 @@ pub struct Token<'a> {
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum TokenType {
     // Single-character tokens
-    LeftParen,
+    LeftParen = 0,
     RightParen,
     LeftBrace,
     RightBrace,
