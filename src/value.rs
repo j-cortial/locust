@@ -1,6 +1,27 @@
 use std::ops::Deref;
+use std::fmt::Display;
 
-pub type Value = f64;
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Value {
+    Bool(bool),
+    Nil,
+    Number(f64)
+}
+
+impl Default for Value {
+    fn default() -> Self {
+        Self::Nil
+    }
+}
+
+impl Display for Value {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Number(n) => Ok(write!(f, "{n}")?),
+            _ => Err(Default::default()),
+        }
+    }
+}
 
 #[derive(Debug, Default)]
 pub struct ValueArray {

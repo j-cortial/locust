@@ -4,7 +4,7 @@ use num_traits::{FromPrimitive, ToPrimitive};
 use crate::{
     chunk::{
         Chunk, OP_ADD, OP_CONSTANT, OP_DIVIDE, OP_MULTIPLY, OP_NEGATE, OP_RETURN, OP_SUBTRACT,
-    }, debug::disassemble, scanner::{Scanner, Token, TokenType}
+    }, debug::disassemble, scanner::{Scanner, Token, TokenType}, value::Value
 };
 
 use std::{ops::Add, str::from_utf8};
@@ -87,7 +87,7 @@ impl<'s, 'a: 's> Parser<'s, 'a> {
         self.emit_byte(current_chunk, OP_RETURN);
     }
 
-    fn make_constant(&mut self, current_chunk: &mut Chunk, value: f64) -> u8 {
+    fn make_constant(&mut self, current_chunk: &mut Chunk, value: Value) -> u8 {
         let constant = current_chunk.add_constant(value);
         if constant > u8::MAX as usize {
             self.error("Too many constants in one chunk");
@@ -96,7 +96,7 @@ impl<'s, 'a: 's> Parser<'s, 'a> {
         constant as u8
     }
 
-    fn emit_constant(&mut self, current_chunk: &mut Chunk, value: f64) {
+    fn emit_constant(&mut self, current_chunk: &mut Chunk, value: Value) {
         let constant_location = self.make_constant(current_chunk, value);
         self.emit_bytes(current_chunk, OP_CONSTANT, constant_location);
     }
@@ -137,7 +137,7 @@ impl<'s, 'a: 's> Parser<'s, 'a> {
             .unwrap()
             .parse()
             .unwrap();
-        self.emit_constant(current_chunk, value);
+        self.emit_constant(current_chunk, Value::Number(value));
     }
 
     fn unary(&mut self, current_chunk: &mut Chunk) {

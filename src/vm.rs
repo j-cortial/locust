@@ -7,8 +7,8 @@ use crate::{
     chunk::{
         Chunk, OP_ADD, OP_CONSTANT, OP_DIVIDE, OP_MULTIPLY, OP_NEGATE, OP_RETURN, OP_SUBTRACT,
     },
-    debug::disassemble_instruction,
     compiler::compile,
+    debug::disassemble_instruction,
 };
 
 use crate::value;
@@ -62,20 +62,32 @@ impl VM {
                     self.stack.push(constant);
                 }
                 OP_ADD => {
-                    binary_op(&mut self.stack, Add::add);
+                    if !self.binary_op(Add::add) {
+                        return InterpretResult::RuntimeError;
+                    }
                 }
                 OP_SUBTRACT => {
-                    binary_op(&mut self.stack, Sub::sub);
+                    if !self.binary_op(Sub::sub) {
+                        return InterpretResult::RuntimeError;
+                    }
                 }
                 OP_MULTIPLY => {
-                    binary_op(&mut self.stack, Mul::mul);
+                    if !self.binary_op(Mul::mul) {
+                        return InterpretResult::RuntimeError;
+                    }
                 }
                 OP_DIVIDE => {
-                    binary_op(&mut self.stack, Div::div);
+                    if !self.binary_op(Div::div) {
+                        return InterpretResult::RuntimeError;
+                    }
                 }
                 OP_NEGATE => {
-                    let value = self.stack.pop();
-                    self.stack.push(-value);
+                    let value = self.stack.peek(0);
+                    if let Some(Value::Number(number)) = value {
+                        self.stack.push(Value::Number(-number));
+                    }
+                    self.runtime_error("Operand must be a number");
+                    return InterpretResult::RuntimeError;
                 }
                 OP_RETURN => {
                     println!("{}", self.stack.pop());
@@ -90,6 +102,29 @@ impl VM {
         let res = self.chunk[self.ip];
         self.ip += 1;
         res
+    }
+
+    fn runtime_error(&self, msg: &str) {
+        eprintln!("{msg}");
+        let instruction = self.ip - 1;
+        let line = self.chunk.lines()[instruction];
+        eprintln!("[line {line}] in script");
+    }
+
+    fn binary_op<F>(&mut self, f: F) -> bool
+    where
+        F: Fn(f64, f64) -> f64,
+    {
+        if let Some(Value::Number(right)) = self.stack.peek(0) {
+            if let Some(Value::Number(left)) = self.stack.peek(1) {
+                self.stack.pop();
+                self.stack.pop();
+                self.stack.push(Value::Number(f(left, right)));
+                return true;
+            }
+        }
+        self.runtime_error("Operands must be numbers");
+        false
     }
 }
 
@@ -113,6 +148,14 @@ impl<const MAX_SIZE: usize> ValueStack<MAX_SIZE> {
         self.count = Default::default();
     }
 
+    fn peek(&self, distance: usize) -> Option<Value> {
+        if self.count > distance {
+            Some(self.values[self.count - (distance + 1)])
+        } else {
+            None
+        }
+    }
+
     fn push(&mut self, value: Value) {
         self.values[self.count] = value;
         self.count += 1;
@@ -131,13 +174,4 @@ impl<const MAX_SIZE: usize> Display for ValueStack<MAX_SIZE> {
         }
         Ok(())
     }
-}
-
-fn binary_op<const MAX_SIZE: usize, F>(stack: &mut ValueStack<MAX_SIZE>, f: F)
-where
-    F: Fn(Value, Value) -> Value,
-{
-    let right = stack.pop();
-    let left = stack.pop();
-    stack.push(f(left, right));
 }
