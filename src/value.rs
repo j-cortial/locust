@@ -1,11 +1,11 @@
-use std::ops::Deref;
 use std::fmt::Display;
+use std::ops::Deref;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Value {
     Bool(bool),
     Nil,
-    Number(f64)
+    Number(f64),
 }
 
 impl Default for Value {
@@ -16,16 +16,23 @@ impl Default for Value {
 
 impl Display for Value {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Number(n) => Ok(write!(f, "{n}")?),
-            _ => Err(Default::default()),
-        }
+        Ok(match self {
+            Self::Bool(b) => {
+                if *b {
+                    write!(f, "true")?
+                } else {
+                    write!(f, "false")?
+                }
+            }
+            Self::Number(n) => write!(f, "{n}")?,
+            Self::Nil => write!(f, "nil")?,
+        })
     }
 }
 
 #[derive(Debug, Default)]
 pub struct ValueArray {
-    values: Vec<Value>
+    values: Vec<Value>,
 }
 
 impl Deref for ValueArray {

@@ -3,8 +3,12 @@ use num_traits::{FromPrimitive, ToPrimitive};
 
 use crate::{
     chunk::{
-        Chunk, OP_ADD, OP_CONSTANT, OP_DIVIDE, OP_MULTIPLY, OP_NEGATE, OP_RETURN, OP_SUBTRACT,
-    }, debug::disassemble, scanner::{Scanner, Token, TokenType}, value::Value
+        Chunk, OP_ADD, OP_CONSTANT, OP_DIVIDE, OP_FALSE, OP_MULTIPLY, OP_NEGATE, OP_NIL, OP_RETURN,
+        OP_SUBTRACT, OP_TRUE,
+    },
+    debug::disassemble,
+    scanner::{Scanner, Token, TokenType},
+    value::Value,
 };
 
 use std::{ops::Add, str::from_utf8};
@@ -127,6 +131,15 @@ impl<'s, 'a: 's> Parser<'s, 'a> {
         self.emit_byte(current_chunk, byte);
     }
 
+    fn literal(&mut self, current_chunk: &mut Chunk) {
+        match self.previous.unwrap().kind {
+            TokenType::False => self.emit_byte(current_chunk, OP_FALSE),
+            TokenType::Nil => self.emit_byte(current_chunk, OP_NIL),
+            TokenType::True => self.emit_byte(current_chunk, OP_TRUE),
+            _ => panic!(),
+        }
+    }
+
     fn grouping(&mut self, current_chunk: &mut Chunk) {
         self.expression(current_chunk);
         self.consume(TokenType::RightParen, "Expect '(' after expression");
@@ -201,17 +214,17 @@ fn get_rule<'a, 'b, 'c, 'd>(token_type: TokenType) -> ParseRule<'a, 'b, 'c, 'd> 
         parse_rule(None, None, Precedence::None),
         parse_rule(None, None, Precedence::None),
         parse_rule(None, None, Precedence::None),
+        parse_rule(Some(Parser::literal), None, Precedence::None),
+        parse_rule(None, None, Precedence::None),
+        parse_rule(None, None, Precedence::None),
+        parse_rule(None, None, Precedence::None),
+        parse_rule(Some(Parser::literal), None, Precedence::None),
         parse_rule(None, None, Precedence::None),
         parse_rule(None, None, Precedence::None),
         parse_rule(None, None, Precedence::None),
         parse_rule(None, None, Precedence::None),
         parse_rule(None, None, Precedence::None),
-        parse_rule(None, None, Precedence::None),
-        parse_rule(None, None, Precedence::None),
-        parse_rule(None, None, Precedence::None),
-        parse_rule(None, None, Precedence::None),
-        parse_rule(None, None, Precedence::None),
-        parse_rule(None, None, Precedence::None),
+        parse_rule(Some(Parser::literal), None, Precedence::None),
         parse_rule(None, None, Precedence::None),
         parse_rule(None, None, Precedence::None),
         parse_rule(None, None, Precedence::None),

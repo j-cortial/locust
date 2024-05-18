@@ -5,7 +5,8 @@ use std::{
 
 use crate::{
     chunk::{
-        Chunk, OP_ADD, OP_CONSTANT, OP_DIVIDE, OP_MULTIPLY, OP_NEGATE, OP_RETURN, OP_SUBTRACT,
+        Chunk, OP_ADD, OP_CONSTANT, OP_DIVIDE, OP_FALSE, OP_MULTIPLY, OP_NEGATE, OP_NIL, OP_RETURN,
+        OP_SUBTRACT, OP_TRUE,
     },
     compiler::compile,
     debug::disassemble_instruction,
@@ -61,6 +62,9 @@ impl VM {
                     let constant = self.chunk.constants()[index];
                     self.stack.push(constant);
                 }
+                OP_NIL => self.stack.push(Value::Nil),
+                OP_TRUE => self.stack.push(Value::Bool(true)),
+                OP_FALSE => self.stack.push(Value::Bool(false)),
                 OP_ADD => {
                     if !self.binary_op(Add::add) {
                         return InterpretResult::RuntimeError;

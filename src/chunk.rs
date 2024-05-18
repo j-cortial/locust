@@ -5,6 +5,9 @@ use std::ops::Index;
 
 pub enum OpCode {
     OpConstant,
+    OpNil,
+    OpTrue,
+    OpFalse,
     OpAdd,
     OpSubtract,
     OpMultiply,
@@ -14,6 +17,9 @@ pub enum OpCode {
 }
 
 pub const OP_CONSTANT: u8 = OpCode::OpConstant as u8;
+pub const OP_NIL: u8 = OpCode::OpNil as u8;
+pub const OP_TRUE: u8 = OpCode::OpTrue as u8;
+pub const OP_FALSE: u8 = OpCode::OpFalse as u8;
 pub const OP_ADD: u8 = OpCode::OpAdd as u8;
 pub const OP_SUBTRACT: u8 = OpCode::OpSubtract as u8;
 pub const OP_MULTIPLY: u8 = OpCode::OpMultiply as u8;

@@ -20,6 +20,9 @@ pub fn disassemble_instruction(chunk: &Chunk, offset: usize) -> usize {
     let instruction = chunk[offset];
     match instruction {
         OP_CONSTANT => constant_instruction("OP_CONSTANT", chunk, offset),
+        OP_NIL => constant_instruction("OP_NIL", chunk, offset),
+        OP_TRUE => constant_instruction("OP_TRUE", chunk, offset),
+        OP_FALSE => constant_instruction("OP_FALSE", chunk, offset),
         OP_ADD => simple_instruction("OP_ADD", offset),
         OP_SUBTRACT => simple_instruction("OP_SUBTRACT", offset),
         OP_MULTIPLY => simple_instruction("OP_MULTIPLY", offset),
