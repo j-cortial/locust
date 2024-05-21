@@ -40,7 +40,7 @@ impl VM {
 
     pub fn interpret(&mut self, source: &str) -> InterpretResult {
         let mut chunk = Chunk::new();
-        if !compile(source, &mut chunk) {
+        if compile(source, &mut chunk) {
             return InterpretResult::CompileError;
         }
         self.chunk = chunk;
