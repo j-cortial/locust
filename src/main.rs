@@ -40,12 +40,14 @@ fn repl(vm: &mut VM) {
         if line.starts_with('\n') {
             break;
         }
+        line.push('\0');
         vm.interpret(&line);
     }
 }
 
 fn run_file(vm: &mut VM, path: &str) -> Result<(), ExitCode> {
-    let source = read_file(path)?;
+    let mut source = read_file(path)?;
+    source.push('\0');
     match vm.interpret(&source) {
         InterpretResult::Ok => Ok(()),
         InterpretResult::CompileError => Err(ExitCode::from(65)),

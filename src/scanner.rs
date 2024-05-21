@@ -96,7 +96,7 @@ impl<'t, 'a: 't> Scanner<'a> {
     }
 
     fn identifier(&mut self) -> Token<'t> {
-        while is_alpha(self.peek()) && self.peek().is_ascii_digit() {
+        while is_alpha(self.peek()) || self.peek().is_ascii_digit() {
             self.advance();
         }
         self.make_token(self.identifier_type())
@@ -134,7 +134,7 @@ impl<'t, 'a: 't> Scanner<'a> {
 
 impl<'a> Scanner<'a> {
     fn is_at_end(&self) -> bool {
-        self.current == self.source.len()
+        self.current == self.source.len() - 1 // Take '\0' into account
     }
 
     fn advance(&mut self) -> u8 {
@@ -237,7 +237,7 @@ impl<'a> Scanner<'a> {
                 if self.current - self.start > 1 {
                     match self.source[self.start + 1] {
                         b'h' => self.check_keyword(2, 2, b"is", TokenType::This),
-                        b'r' => self.check_keyword(2, 3, b"rue", TokenType::True),
+                        b'r' => self.check_keyword(2, 2, b"ue", TokenType::True),
                         _ => TokenType::Identifier,
                     }
                 } else {
