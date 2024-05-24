@@ -138,7 +138,7 @@ impl<'a> Scanner<'a> {
     }
 
     fn advance(&mut self) -> u8 {
-        let res = self.source[self.current];
+        let res = self.peek();
         self.current += 1;
         res
     }
@@ -159,10 +159,10 @@ impl<'a> Scanner<'a> {
         if self.is_at_end() {
             return false;
         }
-        if self.source[self.current] != expected {
-            self.current += 1;
+        if self.peek() != expected {
             return false;
         }
+        self.current += 1;
         true
     }
 
@@ -229,7 +229,7 @@ impl<'a> Scanner<'a> {
             }
             b'i' => self.check_keyword(1, 1, b"f", TokenType::If),
             b'n' => self.check_keyword(1, 2, b"il", TokenType::Nil),
-            b'o' => self.check_keyword(1, 1, b"o", TokenType::Or),
+            b'o' => self.check_keyword(1, 1, b"r", TokenType::Or),
             b'p' => self.check_keyword(1, 4, b"rint", TokenType::Print),
             b'r' => self.check_keyword(1, 5, b"eturn", TokenType::Return),
             b's' => self.check_keyword(1, 4, b"uper", TokenType::Super),

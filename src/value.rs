@@ -10,7 +10,7 @@ pub enum Value {
 
 impl Default for Value {
     fn default() -> Self {
-        Self::Nil
+        Self::nil()
     }
 }
 
@@ -27,6 +27,44 @@ impl Display for Value {
             Self::Number(n) => write!(f, "{n}")?,
             Self::Nil => write!(f, "nil")?,
         })
+    }
+}
+
+impl Value {
+    pub fn is_falsey(&self) -> bool {
+        match self {
+            Value::Bool(b) => !*b,
+            Value::Nil => true,
+            Value::Number(_) => false,
+        }
+    }
+
+    pub fn nil() -> Self {
+        Self::Nil
+    }
+
+    pub fn from_bool(b: bool) -> Self {
+        Self::Bool(b)
+    }
+
+    pub fn from_number(n: f64) -> Self {
+        Self::Number(n)
+    }
+}
+
+pub trait ValueContent {
+    fn to_value(self) -> Value;
+}
+
+impl ValueContent for bool {
+    fn to_value(self) -> Value {
+        Value::from_bool(self)
+    }
+}
+
+impl ValueContent for f64 {
+    fn to_value(self) -> Value {
+        Value::from_number(self)
     }
 }
 

@@ -8,10 +8,14 @@ pub enum OpCode {
     OpNil,
     OpTrue,
     OpFalse,
+    OpEqual,
+    OpGreater,
+    OpLess,
     OpAdd,
     OpSubtract,
     OpMultiply,
     OpDivide,
+    OpNot,
     OpNegate,
     OpReturn,
 }
@@ -20,10 +24,14 @@ pub const OP_CONSTANT: u8 = OpCode::OpConstant as u8;
 pub const OP_NIL: u8 = OpCode::OpNil as u8;
 pub const OP_TRUE: u8 = OpCode::OpTrue as u8;
 pub const OP_FALSE: u8 = OpCode::OpFalse as u8;
+pub const OP_EQUAL: u8 = OpCode::OpEqual as u8;
+pub const OP_GREATER: u8 = OpCode::OpGreater as u8;
+pub const OP_LESS: u8 = OpCode::OpLess as u8;
 pub const OP_ADD: u8 = OpCode::OpAdd as u8;
 pub const OP_SUBTRACT: u8 = OpCode::OpSubtract as u8;
 pub const OP_MULTIPLY: u8 = OpCode::OpMultiply as u8;
 pub const OP_DIVIDE: u8 = OpCode::OpDivide as u8;
+pub const OP_NOT: u8 = OpCode::OpNot as u8;
 pub const OP_NEGATE: u8 = OpCode::OpNegate as u8;
 pub const OP_RETURN: u8 = OpCode::OpReturn as u8;
 

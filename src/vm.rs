@@ -5,11 +5,10 @@ use std::{
 
 use crate::{
     chunk::{
-        Chunk, OP_ADD, OP_CONSTANT, OP_DIVIDE, OP_FALSE, OP_MULTIPLY, OP_NEGATE, OP_NIL, OP_RETURN,
-        OP_SUBTRACT, OP_TRUE,
+        Chunk, OP_ADD, OP_CONSTANT, OP_DIVIDE, OP_EQUAL, OP_FALSE, OP_GREATER, OP_LESS, OP_MULTIPLY, OP_NEGATE, OP_NIL, OP_NOT, OP_RETURN, OP_SUBTRACT, OP_TRUE
     },
     compiler::compile,
-    debug::disassemble_instruction,
+    debug::disassemble_instruction, value::ValueContent,
 };
 
 use crate::value;
@@ -65,33 +64,53 @@ impl VM {
                 OP_NIL => self.stack.push(Value::Nil),
                 OP_TRUE => self.stack.push(Value::Bool(true)),
                 OP_FALSE => self.stack.push(Value::Bool(false)),
+                OP_EQUAL => {
+                    let b = self.stack.pop();
+                    let a = self.stack.pop();
+                    self.stack.push(Value::Bool(a == b));
+                }
+                OP_GREATER => {
+                    if !self.binary_op_bool(PartialOrd::gt) {
+                        return InterpretResult::RuntimeError;
+                    }
+                }
+                OP_LESS => {
+                    if !self.binary_op_bool(PartialOrd::lt) {
+                        return InterpretResult::RuntimeError;
+                    }
+                }
                 OP_ADD => {
-                    if !self.binary_op(Add::add) {
+                    if !self.binary_op_num(Add::add) {
                         return InterpretResult::RuntimeError;
                     }
                 }
                 OP_SUBTRACT => {
-                    if !self.binary_op(Sub::sub) {
+                    if !self.binary_op_num(Sub::sub) {
                         return InterpretResult::RuntimeError;
                     }
                 }
                 OP_MULTIPLY => {
-                    if !self.binary_op(Mul::mul) {
+                    if !self.binary_op_num(Mul::mul) {
                         return InterpretResult::RuntimeError;
                     }
                 }
                 OP_DIVIDE => {
-                    if !self.binary_op(Div::div) {
+                    if !self.binary_op_num(Div::div) {
                         return InterpretResult::RuntimeError;
                     }
+                }
+                OP_NOT => {
+                    let value = self.stack.pop();
+                    self.stack.push(Value::Bool(value.is_falsey()));
                 }
                 OP_NEGATE => {
                     let value = self.stack.peek(0);
                     if let Some(Value::Number(number)) = value {
                         self.stack.push(Value::Number(-number));
+                    } else {
+                        self.runtime_error("Operand must be a number");
+                        return InterpretResult::RuntimeError;
                     }
-                    self.runtime_error("Operand must be a number");
-                    return InterpretResult::RuntimeError;
                 }
                 OP_RETURN => {
                     println!("{}", self.stack.pop());
@@ -115,20 +134,35 @@ impl VM {
         eprintln!("[line {line}] in script");
     }
 
-    fn binary_op<F>(&mut self, f: F) -> bool
+    fn binary_op<R, F>(&mut self, f: F) -> bool
     where
-        F: Fn(f64, f64) -> f64,
+        R: ValueContent,
+        F: Fn(f64, f64) -> R,
     {
         if let Some(Value::Number(right)) = self.stack.peek(0) {
             if let Some(Value::Number(left)) = self.stack.peek(1) {
                 self.stack.pop();
                 self.stack.pop();
-                self.stack.push(Value::Number(f(left, right)));
+                self.stack.push(ValueContent::to_value(f(left, right)));
                 return true;
             }
         }
         self.runtime_error("Operands must be numbers");
         false
+    }
+
+    fn binary_op_num<F>(&mut self, f: F) -> bool
+    where
+        F: Fn(f64, f64) -> f64,
+    {
+        self.binary_op(f)
+    }
+
+    fn binary_op_bool<F>(&mut self, f: F) -> bool
+    where
+        F: Fn(&f64, &f64) -> bool,
+    {
+        self.binary_op(|a, b| f(&a, &b))
     }
 }
 

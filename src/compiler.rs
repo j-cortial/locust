@@ -3,8 +3,8 @@ use num_traits::{FromPrimitive, ToPrimitive};
 
 use crate::{
     chunk::{
-        Chunk, OP_ADD, OP_CONSTANT, OP_DIVIDE, OP_FALSE, OP_MULTIPLY, OP_NEGATE, OP_NIL, OP_RETURN,
-        OP_SUBTRACT, OP_TRUE,
+        Chunk, OP_ADD, OP_CONSTANT, OP_DIVIDE, OP_EQUAL, OP_FALSE, OP_GREATER, OP_LESS,
+        OP_MULTIPLY, OP_NEGATE, OP_NIL, OP_NOT, OP_RETURN, OP_SUBTRACT, OP_TRUE,
     },
     debug::disassemble,
     scanner::{Scanner, Token, TokenType},
@@ -68,6 +68,8 @@ impl<'s, 'a: 's> Parser<'s, 'a> {
                 eprint!(" at '{}'", from_utf8(token.span).unwrap());
             }
         }
+        eprintln!(": {}", message);
+        self.had_error = true;
     }
 
     fn consume(&mut self, kind: TokenType, message: &str) {
@@ -119,16 +121,21 @@ impl<'s, 'a: 's> Parser<'s, 'a> {
         let operator_type = self.previous.unwrap().kind;
         let rule = get_rule(operator_type);
         self.parse_precedence(current_chunk, rule.precedence + 1);
-        let byte = match operator_type {
-            TokenType::Plus => OP_ADD,
-            TokenType::Minus => OP_SUBTRACT,
-            TokenType::Star => OP_MULTIPLY,
-            TokenType::Slash => OP_DIVIDE,
+        match operator_type {
+            TokenType::BangEqual => self.emit_bytes(current_chunk, OP_EQUAL, OP_NOT),
+            TokenType::EqualEqual => self.emit_byte(current_chunk, OP_EQUAL),
+            TokenType::Greater => self.emit_byte(current_chunk, OP_GREATER),
+            TokenType::GreaterEqual => self.emit_bytes(current_chunk, OP_LESS, OP_NOT),
+            TokenType::Less => self.emit_byte(current_chunk, OP_LESS),
+            TokenType::LessEqual => self.emit_bytes(current_chunk, OP_GREATER, OP_NOT),
+            TokenType::Plus => self.emit_byte(current_chunk  , OP_ADD),
+            TokenType::Minus => self.emit_byte(current_chunk, OP_SUBTRACT),
+            TokenType::Star => self.emit_byte(current_chunk, OP_MULTIPLY),
+            TokenType::Slash => self.emit_byte(current_chunk, OP_DIVIDE),
             _ => {
                 unreachable!()
             }
         };
-        self.emit_byte(current_chunk, byte);
     }
 
     fn literal(&mut self, current_chunk: &mut Chunk) {
@@ -136,7 +143,7 @@ impl<'s, 'a: 's> Parser<'s, 'a> {
             TokenType::False => self.emit_byte(current_chunk, OP_FALSE),
             TokenType::Nil => self.emit_byte(current_chunk, OP_NIL),
             TokenType::True => self.emit_byte(current_chunk, OP_TRUE),
-            _ => panic!(),
+            _ => unreachable!(),
         }
     }
 
@@ -154,15 +161,18 @@ impl<'s, 'a: 's> Parser<'s, 'a> {
     }
 
     fn unary(&mut self, current_chunk: &mut Chunk) {
-        self.parse_precedence(current_chunk, Precedence::Unary);
-
         let operator_type = self.previous.unwrap().kind;
-        self.expression(current_chunk);
+        self.parse_precedence(current_chunk, Precedence::Unary);
         match operator_type {
+            TokenType::Bang => {
+                self.emit_byte(current_chunk, OP_NOT);
+            }
             TokenType::Minus => {
                 self.emit_byte(current_chunk, OP_NEGATE);
             }
-            _ => {}
+            _ => {
+                unreachable!()
+            }
         }
     }
 
@@ -200,14 +210,14 @@ fn get_rule<'a, 'b, 'c, 'd>(token_type: TokenType) -> ParseRule<'a, 'b, 'c, 'd> 
         parse_rule(None, None, Precedence::None),
         parse_rule(None, Some(Parser::binary), Precedence::Factor),
         parse_rule(None, Some(Parser::binary), Precedence::Factor),
+        parse_rule(Some(Parser::unary), None, Precedence::None),
+        parse_rule(None, Some(Parser::binary), Precedence::Equality),
         parse_rule(None, None, Precedence::None),
-        parse_rule(None, None, Precedence::None),
-        parse_rule(None, None, Precedence::None),
-        parse_rule(None, None, Precedence::None),
-        parse_rule(None, None, Precedence::None),
-        parse_rule(None, None, Precedence::None),
-        parse_rule(None, None, Precedence::None),
-        parse_rule(None, None, Precedence::None),
+        parse_rule(None, Some(Parser::binary), Precedence::Equality),
+        parse_rule(None, Some(Parser::binary), Precedence::Comparison),
+        parse_rule(None, Some(Parser::binary), Precedence::Comparison),
+        parse_rule(None, Some(Parser::binary), Precedence::Comparison),
+        parse_rule(None, Some(Parser::binary), Precedence::Comparison),
         parse_rule(None, None, Precedence::None),
         parse_rule(None, None, Precedence::None),
         parse_rule(Some(Parser::number), None, Precedence::None),
