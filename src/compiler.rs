@@ -7,6 +7,7 @@ use crate::{
         OP_MULTIPLY, OP_NEGATE, OP_NIL, OP_NOT, OP_RETURN, OP_SUBTRACT, OP_TRUE,
     },
     debug::disassemble,
+    object::{Obj, ObjString},
     scanner::{Scanner, Token, TokenType},
     value::Value,
 };
@@ -128,7 +129,7 @@ impl<'s, 'a: 's> Parser<'s, 'a> {
             TokenType::GreaterEqual => self.emit_bytes(current_chunk, OP_LESS, OP_NOT),
             TokenType::Less => self.emit_byte(current_chunk, OP_LESS),
             TokenType::LessEqual => self.emit_bytes(current_chunk, OP_GREATER, OP_NOT),
-            TokenType::Plus => self.emit_byte(current_chunk  , OP_ADD),
+            TokenType::Plus => self.emit_byte(current_chunk, OP_ADD),
             TokenType::Minus => self.emit_byte(current_chunk, OP_SUBTRACT),
             TokenType::Star => self.emit_byte(current_chunk, OP_MULTIPLY),
             TokenType::Slash => self.emit_byte(current_chunk, OP_DIVIDE),
@@ -158,6 +159,14 @@ impl<'s, 'a: 's> Parser<'s, 'a> {
             .parse()
             .unwrap();
         self.emit_constant(current_chunk, Value::Number(value));
+    }
+
+    fn string(&mut self, current_chunk: &mut Chunk) {
+        let token_span = self.previous.unwrap().span;
+        self.emit_constant(
+            current_chunk,
+            Value::from_obj(ObjString::from_u8(&token_span[1..token_span.len() - 2])),
+        );
     }
 
     fn unary(&mut self, current_chunk: &mut Chunk) {
@@ -221,7 +230,7 @@ fn get_rule<'a, 'b, 'c, 'd>(token_type: TokenType) -> ParseRule<'a, 'b, 'c, 'd> 
         parse_rule(None, None, Precedence::None),
         parse_rule(None, None, Precedence::None),
         parse_rule(Some(Parser::number), None, Precedence::None),
-        parse_rule(None, None, Precedence::None),
+        parse_rule(Some(Parser::string), None, Precedence::None),
         parse_rule(None, None, Precedence::None),
         parse_rule(None, None, Precedence::None),
         parse_rule(Some(Parser::literal), None, Precedence::None),

@@ -42,7 +42,7 @@ pub fn disassemble_instruction(chunk: &Chunk, offset: usize) -> usize {
 
 fn constant_instruction(name: &str, chunk: &Chunk, offset: usize) -> usize {
     let constant = chunk[offset + 1];
-    let value = chunk.constants()[constant as usize];
+    let value = chunk.constants()[constant as usize].clone();
     println!("{name:16} {constant:4} '{value}'");
     offset + 2
 }

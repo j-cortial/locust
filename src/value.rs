@@ -1,11 +1,14 @@
-use std::fmt::Display;
 use std::ops::Deref;
+use std::{fmt::Display, rc::Rc};
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+use crate::object::{Obj, ObjString, ObjType};
+
+#[derive(Debug, Clone)]
 pub enum Value {
     Bool(bool),
     Nil,
     Number(f64),
+    Obj(Rc<dyn Obj>),
 }
 
 impl Default for Value {
@@ -26,7 +29,23 @@ impl Display for Value {
             }
             Self::Number(n) => write!(f, "{n}")?,
             Self::Nil => write!(f, "nil")?,
+            Self::Obj(o) => write!(f, "{}", &*o)?,
         })
+    }
+}
+
+impl PartialEq for Value {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Bool(l0), Self::Bool(r0)) => l0 == r0,
+            (Self::Number(l0), Self::Number(r0)) => l0 == r0,
+            (Self::Obj(l0), Self::Obj(r0)) => {
+                let l0 = l0.as_obj_string().unwrap();
+                let r0 = r0.as_obj_string().unwrap();
+                l0 == r0
+            }
+            _ => core::mem::discriminant(self) == core::mem::discriminant(other),
+        }
     }
 }
 
@@ -36,6 +55,7 @@ impl Value {
             Value::Bool(b) => !*b,
             Value::Nil => true,
             Value::Number(_) => false,
+            Value::Obj(_) => todo!(),
         }
     }
 
@@ -49,6 +69,32 @@ impl Value {
 
     pub fn from_number(n: f64) -> Self {
         Self::Number(n)
+    }
+
+    pub fn from_obj(o: impl Obj + 'static) -> Self {
+        Self::Obj(Rc::new(o))
+    }
+
+    pub fn is_obj_type(&self, kind: ObjType) -> bool {
+        if let Value::Obj(obj) = self {
+            return (*obj).kind() == kind;
+        }
+        false
+    }
+
+    pub fn is_string(&self) -> bool {
+        self.is_obj_type(ObjType::String)
+    }
+
+    pub fn as_obj(&self) -> &dyn Obj {
+        if let Value::Obj(obj) = self {
+            return &**obj;
+        }
+        panic!()
+    }
+
+    pub fn as_string(&self) -> &ObjString {
+        self.as_obj().as_obj_string().unwrap()
     }
 }
 
@@ -93,8 +139,4 @@ impl ValueArray {
     pub fn count(&self) -> usize {
         self.values.len()
     }
-}
-
-pub fn print_value(value: Value) {
-    print!("{value}");
 }

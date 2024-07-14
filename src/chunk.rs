@@ -39,7 +39,7 @@ pub const OP_RETURN: u8 = OpCode::OpReturn as u8;
 pub struct Chunk {
     code: Vec<u8>,
     lines: Vec<i32>,
-    constants: ValueArray
+    constants: ValueArray,
 }
 
 impl Chunk {

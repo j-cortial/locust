@@ -1,14 +1,17 @@
 use std::{
+    array::from_fn,
     fmt::Display,
     ops::{Add, Div, Mul, Sub},
 };
 
 use crate::{
     chunk::{
-        Chunk, OP_ADD, OP_CONSTANT, OP_DIVIDE, OP_EQUAL, OP_FALSE, OP_GREATER, OP_LESS, OP_MULTIPLY, OP_NEGATE, OP_NIL, OP_NOT, OP_RETURN, OP_SUBTRACT, OP_TRUE
+        Chunk, OP_ADD, OP_CONSTANT, OP_DIVIDE, OP_EQUAL, OP_FALSE, OP_GREATER, OP_LESS,
+        OP_MULTIPLY, OP_NEGATE, OP_NIL, OP_NOT, OP_RETURN, OP_SUBTRACT, OP_TRUE,
     },
     compiler::compile,
-    debug::disassemble_instruction, value::ValueContent,
+    debug::disassemble_instruction,
+    value::ValueContent,
 };
 
 use crate::value;
@@ -58,7 +61,7 @@ impl VM {
             match instruction {
                 OP_CONSTANT => {
                     let index = self.read_byte() as usize;
-                    let constant = self.chunk.constants()[index];
+                    let constant = self.chunk.constants()[index].clone();
                     self.stack.push(constant);
                 }
                 OP_NIL => self.stack.push(Value::Nil),
@@ -175,7 +178,7 @@ struct ValueStack<const MAX_SIZE: usize> {
 impl<const MAX_SIZE: usize> Default for ValueStack<MAX_SIZE> {
     fn default() -> Self {
         Self {
-            values: [Default::default(); MAX_SIZE],
+            values: from_fn(|_| Default::default()),
             count: Default::default(),
         }
     }
@@ -188,7 +191,7 @@ impl<const MAX_SIZE: usize> ValueStack<MAX_SIZE> {
 
     fn peek(&self, distance: usize) -> Option<Value> {
         if self.count > distance {
-            Some(self.values[self.count - (distance + 1)])
+            Some(self.values[self.count - (distance + 1)].clone())
         } else {
             None
         }
@@ -201,13 +204,13 @@ impl<const MAX_SIZE: usize> ValueStack<MAX_SIZE> {
 
     fn pop(&mut self) -> Value {
         self.count -= 1;
-        self.values[self.count]
+        self.values[self.count].clone()
     }
 }
 
 impl<const MAX_SIZE: usize> Display for ValueStack<MAX_SIZE> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        for &value in &self.values[..self.count] {
+        for value in &self.values[..self.count] {
             write!(f, "[ {value} ]")?;
         }
         Ok(())

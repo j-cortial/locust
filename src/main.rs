@@ -1,12 +1,13 @@
 //#[macro_use]
 extern crate num_derive;
 
+mod scanner;
+mod object;
+mod value;
 mod chunk;
 mod debug;
-mod value;
-mod vm;
 mod compiler;
-mod scanner;
+mod vm;
 
 use vm::{InterpretResult, VM};
 
