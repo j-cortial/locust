@@ -83,8 +83,19 @@ impl VM {
                     }
                 }
                 OP_ADD => {
-                    if !self.binary_op_num(Add::add) {
-                        return InterpretResult::RuntimeError;
+                    if self.stack.peek(0).unwrap().is_string()
+                        && self.stack.peek(1).unwrap().is_string()
+                    {
+                        self.concatenate();
+                    } else if let Some(Value::Number(right)) = self.stack.peek(0) {
+                        if let Some(Value::Number(left)) = self.stack.peek(1) {
+                            self.stack.pop();
+                            self.stack.pop();
+                            self.stack.push(ValueContent::to_value(left + right));
+                        } else {
+                            self.runtime_error("Operands must be two numbers or two strings");
+                            return InterpretResult::RuntimeError;
+                        }
                     }
                 }
                 OP_SUBTRACT => {
@@ -166,6 +177,13 @@ impl VM {
         F: Fn(&f64, &f64) -> bool,
     {
         self.binary_op(|a, b| f(&a, &b))
+    }
+
+    fn concatenate(&mut self) {
+        let b = self.stack.pop();
+        let a = self.stack.pop();
+        self.stack
+            .push(Value::from_obj(a.as_string().concatenate(b.as_string())));
     }
 }
 

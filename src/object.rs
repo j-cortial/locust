@@ -51,6 +51,10 @@ impl ObjString {
     pub fn chars(&self) -> &str {
         &self.content
     }
+
+    pub fn concatenate(&self, other: &Self) -> Self {
+        Self { content: format!("{}{}", self.content, other.content) }
+    }
 }
 
 impl Display for ObjString {
