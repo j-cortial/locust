@@ -7,7 +7,7 @@ use crate::{
         OP_MULTIPLY, OP_NEGATE, OP_NIL, OP_NOT, OP_RETURN, OP_SUBTRACT, OP_TRUE,
     },
     debug::disassemble,
-    object::{Obj, ObjString},
+    object::{Intern, ObjString},
     scanner::{Scanner, Token, TokenType},
     value::Value,
 };
@@ -16,6 +16,7 @@ use std::{ops::Add, str::from_utf8};
 
 struct Parser<'s, 'a: 's> {
     scanner: &'a mut Scanner<'s>,
+    intern: &'a mut dyn Intern,
     current: Option<Token<'a>>,
     previous: Option<Token<'a>>,
     had_error: bool,
@@ -23,9 +24,10 @@ struct Parser<'s, 'a: 's> {
 }
 
 impl<'s, 'a: 's> Parser<'s, 'a> {
-    fn new(scanner: &'a mut Scanner<'s>) -> Self {
+    fn new(scanner: &'a mut Scanner<'s>, intern: &'a mut dyn Intern) -> Self {
         Self {
             scanner,
+            intern,
             current: None,
             previous: None,
             had_error: false,
@@ -163,10 +165,8 @@ impl<'s, 'a: 's> Parser<'s, 'a> {
 
     fn string(&mut self, current_chunk: &mut Chunk) {
         let token_span = self.previous.unwrap().span;
-        self.emit_constant(
-            current_chunk,
-            Value::from_obj(ObjString::from_u8(&token_span[1..token_span.len() - 2])),
-        );
+        let obj_string = ObjString::from_u8(self.intern, &token_span[1..token_span.len() - 2]);
+        self.emit_constant(current_chunk, Value::from_obj(obj_string));
     }
 
     fn unary(&mut self, current_chunk: &mut Chunk) {
@@ -252,9 +252,9 @@ fn get_rule<'a, 'b, 'c, 'd>(token_type: TokenType) -> ParseRule<'a, 'b, 'c, 'd> 
     rules[token_type as usize]
 }
 
-pub fn compile(source: &str, chunk: &mut Chunk) -> bool {
+pub fn compile(source: &str, chunk: &mut Chunk, intern: &mut dyn Intern) -> bool {
     let mut scanner = Scanner::new(source.as_bytes());
-    let mut parser = Parser::new(&mut scanner);
+    let mut parser = Parser::new(&mut scanner, intern);
     let compiling_chunk = chunk;
     parser.advance();
     parser.expression(compiling_chunk);

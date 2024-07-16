@@ -71,8 +71,8 @@ impl Value {
         Self::Number(n)
     }
 
-    pub fn from_obj(o: impl Obj + 'static) -> Self {
-        Self::Obj(Rc::new(o))
+    pub fn from_obj(o: Rc<dyn Obj>) -> Self {
+        Self::Obj(o)
     }
 
     pub fn is_obj_type(&self, kind: ObjType) -> bool {
@@ -128,10 +128,6 @@ impl Deref for ValueArray {
 }
 
 impl ValueArray {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
     pub fn write(&mut self, value: Value) {
         self.values.push(value)
     }

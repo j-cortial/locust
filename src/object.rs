@@ -1,5 +1,6 @@
 use std::fmt::Debug;
 use std::fmt::Display;
+use std::rc::Rc;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ObjType {
@@ -38,22 +39,16 @@ impl Obj for ObjString {
 }
 
 impl ObjString {
-    pub fn from_u8(chars: &[u8]) -> Self {
-        Self {
-            content: String::from_utf8(chars.to_owned()).unwrap(),
-        }
+    fn new(intern: &mut dyn Intern, content: String) -> Rc<Self> {
+        intern.intern(Self { content })
     }
 
-    pub fn length(&self) -> usize {
-        self.content.len()
+    pub fn from_u8(intern: &mut dyn Intern, chars: &[u8]) -> Rc<Self> {
+        Self::new(intern, String::from_utf8(chars.to_owned()).unwrap())
     }
 
-    pub fn chars(&self) -> &str {
-        &self.content
-    }
-
-    pub fn concatenate(&self, other: &Self) -> Self {
-        Self { content: format!("{}{}", self.content, other.content) }
+    pub fn concatenate(&self, intern: &mut dyn Intern, other: &Self) -> Rc<Self> {
+        Self::new(intern, format!("{}{}", self.content, other.content))
     }
 }
 
@@ -62,4 +57,8 @@ impl Display for ObjString {
         write!(f, "{}", self.content)?;
         Ok(())
     }
+}
+
+pub trait Intern {
+    fn intern(&mut self, new_instance: ObjString) -> Rc<ObjString>;
 }

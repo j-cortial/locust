@@ -1,17 +1,14 @@
 use std::{
     array::from_fn,
     fmt::Display,
-    ops::{Add, Div, Mul, Sub},
+    ops::{Div, Mul, Sub},
 };
 
 use crate::{
     chunk::{
         Chunk, OP_ADD, OP_CONSTANT, OP_DIVIDE, OP_EQUAL, OP_FALSE, OP_GREATER, OP_LESS,
         OP_MULTIPLY, OP_NEGATE, OP_NIL, OP_NOT, OP_RETURN, OP_SUBTRACT, OP_TRUE,
-    },
-    compiler::compile,
-    debug::disassemble_instruction,
-    value::ValueContent,
+    }, compiler::compile, debug::disassemble_instruction, table::Table, value::ValueContent
 };
 
 use crate::value;
@@ -23,6 +20,7 @@ pub struct VM {
     chunk: Chunk,
     ip: usize,
     stack: ValueStack<STACK_MAX>,
+    strings: Table
 }
 
 pub enum InterpretResult {
@@ -37,12 +35,13 @@ impl VM {
             chunk: Default::default(),
             ip: 0,
             stack: Default::default(),
+            strings: Default::default(),
         }
     }
 
     pub fn interpret(&mut self, source: &str) -> InterpretResult {
         let mut chunk = Chunk::new();
-        if compile(source, &mut chunk) {
+        if compile(source, &mut chunk, &mut self.strings) {
             return InterpretResult::CompileError;
         }
         self.chunk = chunk;
@@ -183,7 +182,7 @@ impl VM {
         let b = self.stack.pop();
         let a = self.stack.pop();
         self.stack
-            .push(Value::from_obj(a.as_string().concatenate(b.as_string())));
+            .push(Value::from_obj(a.as_string().concatenate(&mut self.strings, b.as_string())));
     }
 }
 
