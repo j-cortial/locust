@@ -42,7 +42,8 @@ impl PartialEq for Value {
             (Self::Obj(l0), Self::Obj(r0)) => {
                 let l0 = l0.as_obj_string().unwrap();
                 let r0 = r0.as_obj_string().unwrap();
-                l0 == r0
+                // Exploit systematic string interning
+                (l0 as *const ObjString) == (r0 as *const ObjString)
             }
             _ => core::mem::discriminant(self) == core::mem::discriminant(other),
         }
