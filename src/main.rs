@@ -4,6 +4,7 @@ extern crate num_derive;
 mod scanner;
 mod object;
 mod value;
+mod table;
 mod chunk;
 mod debug;
 mod compiler;

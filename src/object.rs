@@ -22,7 +22,7 @@ impl Display for dyn Obj {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ObjString {
     content: String,
 }
