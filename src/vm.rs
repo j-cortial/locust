@@ -6,8 +6,7 @@ use std::{
 
 use crate::{
     chunk::{
-        Chunk, OP_ADD, OP_CONSTANT, OP_DIVIDE, OP_EQUAL, OP_FALSE, OP_GREATER, OP_LESS,
-        OP_MULTIPLY, OP_NEGATE, OP_NIL, OP_NOT, OP_RETURN, OP_SUBTRACT, OP_TRUE,
+        Chunk, OP_ADD, OP_CONSTANT, OP_DIVIDE, OP_EQUAL, OP_FALSE, OP_GREATER, OP_LESS, OP_MULTIPLY, OP_NEGATE, OP_NIL, OP_NOT, OP_PRINT, OP_RETURN, OP_SUBTRACT, OP_TRUE
     }, compiler::compile, debug::disassemble_instruction, table::Table, value::ValueContent
 };
 
@@ -125,8 +124,11 @@ impl VM {
                         return InterpretResult::RuntimeError;
                     }
                 }
-                OP_RETURN => {
+                OP_PRINT => {
                     println!("{}", self.stack.pop());
+                }
+                OP_RETURN => {
+                    // Exit interpreter
                     return InterpretResult::Ok;
                 }
                 _ => {}

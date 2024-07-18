@@ -3,8 +3,7 @@ use num_traits::{FromPrimitive, ToPrimitive};
 
 use crate::{
     chunk::{
-        Chunk, OP_ADD, OP_CONSTANT, OP_DIVIDE, OP_EQUAL, OP_FALSE, OP_GREATER, OP_LESS,
-        OP_MULTIPLY, OP_NEGATE, OP_NIL, OP_NOT, OP_RETURN, OP_SUBTRACT, OP_TRUE,
+        Chunk, OP_ADD, OP_CONSTANT, OP_DIVIDE, OP_EQUAL, OP_FALSE, OP_GREATER, OP_LESS, OP_MULTIPLY, OP_NEGATE, OP_NIL, OP_NOT, OP_PRINT, OP_RETURN, OP_SUBTRACT, OP_TRUE
     },
     debug::disassemble,
     object::{Intern, ObjString},
@@ -81,6 +80,18 @@ impl<'s, 'a: 's> Parser<'s, 'a> {
             return;
         }
         self.error_at_current(message);
+    }
+
+    fn check(&self, kind: TokenType) -> bool {
+        self.current.unwrap().kind == kind
+    }
+
+    fn match_token(&mut self, kind: TokenType) -> bool {
+        if !self.check(kind) {
+            return false;
+        }
+        self.advance();
+        true
     }
 
     fn emit_byte(&mut self, current_chunk: &mut Chunk, byte: u8) {
@@ -204,6 +215,22 @@ impl<'s, 'a: 's> Parser<'s, 'a> {
     fn expression(&mut self, current_chunk: &mut Chunk) {
         self.parse_precedence(current_chunk, Precedence::Assignment);
     }
+
+    fn print_statement(&mut self, current_chunk: &mut Chunk) {
+        self.expression(current_chunk);
+        self.consume(TokenType::SemiColon, "Expect ';' after value");
+        self.emit_byte(current_chunk, OP_PRINT);
+    }
+
+    fn declaration(&mut self, current_chunk: &mut Chunk) {
+        self.statement(current_chunk);
+    }
+
+    fn statement(&mut self, current_chunk: &mut Chunk) {
+        if self.match_token(TokenType::Print) {
+            self.print_statement(current_chunk);
+        }
+    }
 }
 
 fn get_rule<'a, 'b, 'c, 'd>(token_type: TokenType) -> ParseRule<'a, 'b, 'c, 'd> {
@@ -257,8 +284,9 @@ pub fn compile(source: &str, chunk: &mut Chunk, intern: &mut dyn Intern) -> bool
     let mut parser = Parser::new(&mut scanner, intern);
     let compiling_chunk = chunk;
     parser.advance();
-    parser.expression(compiling_chunk);
-    parser.consume(TokenType::Eof, "Expect end of expression");
+    while !parser.match_token(TokenType::Eof) {
+        parser.declaration(compiling_chunk);
+    }
     parser.end_compiler(compiling_chunk);
     parser.had_error
 }

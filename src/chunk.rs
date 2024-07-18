@@ -17,6 +17,7 @@ pub enum OpCode {
     OpDivide,
     OpNot,
     OpNegate,
+    OpPrint,
     OpReturn,
 }
 
@@ -33,6 +34,7 @@ pub const OP_MULTIPLY: u8 = OpCode::OpMultiply as u8;
 pub const OP_DIVIDE: u8 = OpCode::OpDivide as u8;
 pub const OP_NOT: u8 = OpCode::OpNot as u8;
 pub const OP_NEGATE: u8 = OpCode::OpNegate as u8;
+pub const OP_PRINT: u8 = OpCode::OpPrint as u8;
 pub const OP_RETURN: u8 = OpCode::OpReturn as u8;
 
 #[derive(Debug, Default)]

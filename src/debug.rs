@@ -32,6 +32,7 @@ pub fn disassemble_instruction(chunk: &Chunk, offset: usize) -> usize {
         OP_DIVIDE => simple_instruction("OP_DIVIDE", offset),
         OP_NOT => simple_instruction("OP_NOT", offset),
         OP_NEGATE => simple_instruction("OP_NEGATE", offset),
+        OP_PRINT => simple_instruction("OP_PRINT", offset),
         OP_RETURN => simple_instruction("OP_RETURN", offset),
         _ => {
             println!("Unknown opcode {instruction}");
