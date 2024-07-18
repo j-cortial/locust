@@ -8,6 +8,7 @@ pub enum OpCode {
     OpNil,
     OpTrue,
     OpFalse,
+    OpPop,
     OpEqual,
     OpGreater,
     OpLess,
@@ -25,6 +26,7 @@ pub const OP_CONSTANT: u8 = OpCode::OpConstant as u8;
 pub const OP_NIL: u8 = OpCode::OpNil as u8;
 pub const OP_TRUE: u8 = OpCode::OpTrue as u8;
 pub const OP_FALSE: u8 = OpCode::OpFalse as u8;
+pub const OP_POP: u8 = OpCode::OpPop as u8;
 pub const OP_EQUAL: u8 = OpCode::OpEqual as u8;
 pub const OP_GREATER: u8 = OpCode::OpGreater as u8;
 pub const OP_LESS: u8 = OpCode::OpLess as u8;

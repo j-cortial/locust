@@ -23,6 +23,7 @@ pub fn disassemble_instruction(chunk: &Chunk, offset: usize) -> usize {
         OP_NIL => simple_instruction("OP_NIL", offset),
         OP_TRUE => simple_instruction("OP_TRUE", offset),
         OP_FALSE => simple_instruction("OP_FALSE", offset),
+        OP_POP => simple_instruction("OP_POP", offset),
         OP_EQUAL => simple_instruction("OP_EQUAL", offset),
         OP_GREATER => simple_instruction("OP_GREATER", offset),
         OP_LESS => simple_instruction("OP_LESS", offset),

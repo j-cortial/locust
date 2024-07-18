@@ -3,7 +3,8 @@ use num_traits::{FromPrimitive, ToPrimitive};
 
 use crate::{
     chunk::{
-        Chunk, OP_ADD, OP_CONSTANT, OP_DIVIDE, OP_EQUAL, OP_FALSE, OP_GREATER, OP_LESS, OP_MULTIPLY, OP_NEGATE, OP_NIL, OP_NOT, OP_PRINT, OP_RETURN, OP_SUBTRACT, OP_TRUE
+        Chunk, OP_ADD, OP_CONSTANT, OP_DIVIDE, OP_EQUAL, OP_FALSE, OP_GREATER, OP_LESS,
+        OP_MULTIPLY, OP_NEGATE, OP_NIL, OP_NOT, OP_POP, OP_PRINT, OP_RETURN, OP_SUBTRACT, OP_TRUE,
     },
     debug::disassemble,
     object::{Intern, ObjString},
@@ -216,19 +217,56 @@ impl<'s, 'a: 's> Parser<'s, 'a> {
         self.parse_precedence(current_chunk, Precedence::Assignment);
     }
 
+    fn expression_statement(&mut self, current_chunk: &mut Chunk) {
+        self.expression(current_chunk);
+        self.consume(TokenType::SemiColon, "Expect ';' after expression");
+        self.emit_byte(current_chunk, OP_POP);
+    }
+
     fn print_statement(&mut self, current_chunk: &mut Chunk) {
         self.expression(current_chunk);
         self.consume(TokenType::SemiColon, "Expect ';' after value");
         self.emit_byte(current_chunk, OP_PRINT);
     }
 
+    fn synchronize(&mut self) {
+        self.panic_mode = false;
+
+        while self.current.unwrap().kind != TokenType::Eof {
+            if self.previous.unwrap().kind == TokenType::SemiColon {
+                return;
+            }
+            match self.current.unwrap().kind {
+                TokenType::Class
+                | TokenType::Fun
+                | TokenType::Var
+                | TokenType::For
+                | TokenType::If
+                | TokenType::While
+                | TokenType::Print
+                | TokenType::Return => {
+                    return;
+                }
+                _ => {
+                    // Do nothing
+                }
+            }
+            self.advance();
+        }
+    }
+
     fn declaration(&mut self, current_chunk: &mut Chunk) {
         self.statement(current_chunk);
+        if self.panic_mode {
+            self.synchronize();
+        }
     }
 
     fn statement(&mut self, current_chunk: &mut Chunk) {
         if self.match_token(TokenType::Print) {
             self.print_statement(current_chunk);
+        } else {
+            self.expression_statement(current_chunk);
         }
     }
 }
