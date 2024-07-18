@@ -165,7 +165,7 @@ impl<'s, 'a: 's> Parser<'s, 'a> {
 
     fn string(&mut self, current_chunk: &mut Chunk) {
         let token_span = self.previous.unwrap().span;
-        let obj_string = ObjString::from_u8(self.intern, &token_span[1..token_span.len() - 2]);
+        let obj_string = ObjString::from_u8(self.intern, &token_span[1..token_span.len() - 1]);
         self.emit_constant(current_chunk, Value::from_obj(obj_string));
     }
 
@@ -228,9 +228,9 @@ fn get_rule<'a, 'b, 'c, 'd>(token_type: TokenType) -> ParseRule<'a, 'b, 'c, 'd> 
         parse_rule(None, Some(Parser::binary), Precedence::Comparison),
         parse_rule(None, Some(Parser::binary), Precedence::Comparison),
         parse_rule(None, None, Precedence::None),
-        parse_rule(None, None, Precedence::None),
-        parse_rule(Some(Parser::number), None, Precedence::None),
         parse_rule(Some(Parser::string), None, Precedence::None),
+        parse_rule(Some(Parser::number), None, Precedence::None),
+        parse_rule(None, None, Precedence::None),
         parse_rule(None, None, Precedence::None),
         parse_rule(None, None, Precedence::None),
         parse_rule(Some(Parser::literal), None, Precedence::None),
