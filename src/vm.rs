@@ -6,13 +6,10 @@ use std::{
 
 use crate::{
     chunk::{
-        Chunk, OP_ADD, OP_CONSTANT, OP_DIVIDE, OP_EQUAL, OP_FALSE, OP_GREATER, OP_LESS,
-        OP_MULTIPLY, OP_NEGATE, OP_NIL, OP_NOT, OP_POP, OP_PRINT, OP_RETURN, OP_SUBTRACT, OP_TRUE,
-    },
-    compiler::compile,
-    debug::disassemble_instruction,
-    table::Table,
-    value::ValueContent,
+        Chunk, OP_ADD, OP_CONSTANT, OP_DEFINE_GLOBAL, OP_DIVIDE, OP_EQUAL, OP_FALSE, OP_GREATER,
+        OP_LESS, OP_MULTIPLY, OP_NEGATE, OP_NIL, OP_NOT, OP_POP, OP_PRINT, OP_RETURN, OP_SUBTRACT,
+        OP_TRUE,
+    }, compiler::compile, debug::disassemble_instruction, table::Table, value::ValueContent
 };
 
 use crate::value;
@@ -24,6 +21,7 @@ pub struct VM {
     chunk: Chunk,
     ip: usize,
     stack: ValueStack<STACK_MAX>,
+    globals: Table,
     strings: Table,
 }
 
@@ -39,6 +37,7 @@ impl VM {
             chunk: Default::default(),
             ip: 0,
             stack: Default::default(),
+            globals: Default::default(),
             strings: Default::default(),
         }
     }
@@ -63,14 +62,19 @@ impl VM {
             let instruction = self.read_byte();
             match instruction {
                 OP_CONSTANT => {
-                    let index = self.read_byte() as usize;
-                    let constant = self.chunk.constants()[index].clone();
+                    let constant = self.read_constant();
                     self.stack.push(constant);
                 }
                 OP_NIL => self.stack.push(Value::Nil),
                 OP_TRUE => self.stack.push(Value::Bool(true)),
                 OP_FALSE => self.stack.push(Value::Bool(false)),
                 OP_POP => {
+                    self.stack.pop();
+                }
+                OP_DEFINE_GLOBAL => {
+                    let constant = self.read_constant();
+                    let name = constant.as_string_rc();
+                    self.globals.insert(name, self.stack.peek(0).unwrap());
                     self.stack.pop();
                 }
                 OP_EQUAL => {
@@ -148,6 +152,11 @@ impl VM {
         let res = self.chunk[self.ip];
         self.ip += 1;
         res
+    }
+
+    fn read_constant(&mut self) -> Value {
+        let index = self.read_byte() as usize;
+        self.chunk.constants()[index].clone()
     }
 
     fn runtime_error(&self, msg: &str) {

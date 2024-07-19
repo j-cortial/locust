@@ -94,8 +94,19 @@ impl Value {
         panic!()
     }
 
+    pub fn as_obj_rc(&self) -> Rc<dyn Obj> {
+        if let Value::Obj(obj) = self {
+            return Rc::clone(obj);
+        }
+        panic!()
+    }
+
     pub fn as_string(&self) -> &ObjString {
         self.as_obj().as_obj_string().unwrap()
+    }
+
+    pub fn as_string_rc(&self) -> Rc<ObjString> {
+        Rc::downcast(self.as_obj_rc()).unwrap()
     }
 }
 

@@ -3,8 +3,7 @@ use num_traits::{FromPrimitive, ToPrimitive};
 
 use crate::{
     chunk::{
-        Chunk, OP_ADD, OP_CONSTANT, OP_DIVIDE, OP_EQUAL, OP_FALSE, OP_GREATER, OP_LESS,
-        OP_MULTIPLY, OP_NEGATE, OP_NIL, OP_NOT, OP_POP, OP_PRINT, OP_RETURN, OP_SUBTRACT, OP_TRUE,
+        Chunk, OP_ADD, OP_CONSTANT, OP_DEFINE_GLOBAL, OP_DIVIDE, OP_EQUAL, OP_FALSE, OP_GREATER, OP_LESS, OP_MULTIPLY, OP_NEGATE, OP_NIL, OP_NOT, OP_POP, OP_PRINT, OP_RETURN, OP_SUBTRACT, OP_TRUE
     },
     debug::disassemble,
     object::{Intern, ObjString},
@@ -213,8 +212,34 @@ impl<'s, 'a: 's> Parser<'s, 'a> {
         }
     }
 
+    fn identifier_constant(&mut self, current_chunk: &mut Chunk, name: &Token) -> u8 {
+        let token_span = name.span;
+        let value = ObjString::from_u8(self.intern, &token_span[1..token_span.len() - 1]);
+        self.make_constant(current_chunk, Value::from_obj(value))
+    }
+
+    fn parse_variable(&mut self, current_chunk: &mut Chunk, error_message: &str) -> u8 {
+        self.consume(TokenType::Identifier, error_message);
+        self.identifier_constant(current_chunk, &self.previous.unwrap())
+    }
+
+    fn define_variable(&mut self, current_chunk: &mut Chunk, global: u8) {
+        self.emit_bytes(current_chunk, OP_DEFINE_GLOBAL, global);
+    }
+
     fn expression(&mut self, current_chunk: &mut Chunk) {
         self.parse_precedence(current_chunk, Precedence::Assignment);
+    }
+
+    fn var_declaration(&mut self, current_chunk: &mut Chunk) {
+        let global = self.parse_variable(current_chunk, "Expect variable name");
+        if self.match_token(TokenType::Equal) {
+            self.expression(current_chunk);
+        } else {
+            self.emit_byte(current_chunk, OP_NIL);
+        }
+        self.consume(TokenType::SemiColon, "Expect ';' after variable declaration");
+        self.define_variable(current_chunk, global);
     }
 
     fn expression_statement(&mut self, current_chunk: &mut Chunk) {
@@ -256,7 +281,11 @@ impl<'s, 'a: 's> Parser<'s, 'a> {
     }
 
     fn declaration(&mut self, current_chunk: &mut Chunk) {
-        self.statement(current_chunk);
+        if self.match_token(TokenType::Var) {
+            self.var_declaration(current_chunk);
+        } else {
+            self.statement(current_chunk);
+        }
         if self.panic_mode {
             self.synchronize();
         }

@@ -1,3 +1,4 @@
+use std::any::Any;
 use std::fmt::Debug;
 use std::fmt::Display;
 use std::rc::Rc;
@@ -7,7 +8,7 @@ pub enum ObjType {
     String,
 }
 
-pub trait Obj: Debug {
+pub trait Obj: Debug + Any {
     fn kind(&self) -> ObjType;
     fn as_obj_string(&self) -> Option<&ObjString> {
         None

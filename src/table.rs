@@ -8,12 +8,24 @@ use crate::{object::ObjString, value::Value};
 #[derive(Debug, Default, Clone)]
 pub struct Table(HashMap<Key, Value>);
 
-#[derive(Debug, Clone, Eq)]
+impl Table {
+    pub fn insert(&mut self, key: Rc<ObjString>, value: Value) {
+        self.0.insert(Key(key), value);
+    }
+}
+
+#[derive(Debug, Eq)]
 struct Key(Rc<ObjString>);
 
 impl Key {
     fn underlying(&self) -> &ObjString {
         &*self.0
+    }
+}
+
+impl Clone for Key {
+    fn clone(&self) -> Self {
+        Self(Rc::clone(&self.0))
     }
 }
 
