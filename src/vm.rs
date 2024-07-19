@@ -6,10 +6,14 @@ use std::{
 
 use crate::{
     chunk::{
-        Chunk, OP_ADD, OP_CONSTANT, OP_DEFINE_GLOBAL, OP_DIVIDE, OP_EQUAL, OP_FALSE, OP_GREATER,
-        OP_LESS, OP_MULTIPLY, OP_NEGATE, OP_NIL, OP_NOT, OP_POP, OP_PRINT, OP_RETURN, OP_SUBTRACT,
-        OP_TRUE,
-    }, compiler::compile, debug::disassemble_instruction, table::Table, value::ValueContent
+        Chunk, OP_ADD, OP_CONSTANT, OP_DEFINE_GLOBAL, OP_DIVIDE, OP_EQUAL, OP_FALSE, OP_GET_GLOBAL,
+        OP_GREATER, OP_LESS, OP_MULTIPLY, OP_NEGATE, OP_NIL, OP_NOT, OP_POP, OP_PRINT, OP_RETURN,
+        OP_SUBTRACT, OP_TRUE,
+    },
+    compiler::compile,
+    debug::disassemble_instruction,
+    table::Table,
+    value::ValueContent,
 };
 
 use crate::value;
@@ -70,6 +74,16 @@ impl VM {
                 OP_FALSE => self.stack.push(Value::Bool(false)),
                 OP_POP => {
                     self.stack.pop();
+                }
+                OP_GET_GLOBAL => {
+                    let constant = self.read_constant();
+                    let name = constant.as_string_rc();
+                    if let Some(value) = self.globals.get(name) {
+                        self.stack.push(value.clone());
+                    } else {
+                        self.runtime_error("Undefined variable {name}");
+                        return InterpretResult::RuntimeError;
+                    }
                 }
                 OP_DEFINE_GLOBAL => {
                     let constant = self.read_constant();

@@ -3,7 +3,7 @@ use num_traits::{FromPrimitive, ToPrimitive};
 
 use crate::{
     chunk::{
-        Chunk, OP_ADD, OP_CONSTANT, OP_DEFINE_GLOBAL, OP_DIVIDE, OP_EQUAL, OP_FALSE, OP_GREATER, OP_LESS, OP_MULTIPLY, OP_NEGATE, OP_NIL, OP_NOT, OP_POP, OP_PRINT, OP_RETURN, OP_SUBTRACT, OP_TRUE
+        Chunk, OP_ADD, OP_CONSTANT, OP_DEFINE_GLOBAL, OP_DIVIDE, OP_EQUAL, OP_FALSE, OP_GET_GLOBAL, OP_GREATER, OP_LESS, OP_MULTIPLY, OP_NEGATE, OP_NIL, OP_NOT, OP_POP, OP_PRINT, OP_RETURN, OP_SUBTRACT, OP_TRUE
     },
     debug::disassemble,
     object::{Intern, ObjString},
@@ -180,6 +180,15 @@ impl<'s, 'a: 's> Parser<'s, 'a> {
         self.emit_constant(current_chunk, Value::from_obj(obj_string));
     }
 
+    fn named_variable(&mut self, current_chunk: &mut Chunk, name: Token) {
+        let arg = self.identifier_constant(current_chunk, &name);
+        self.emit_bytes(current_chunk, OP_GET_GLOBAL, arg);
+    }
+
+    fn variable(&mut self, current_chunk: &mut Chunk) {
+        self.named_variable(current_chunk, self.previous.unwrap());
+    }
+
     fn unary(&mut self, current_chunk: &mut Chunk) {
         let operator_type = self.previous.unwrap().kind;
         self.parse_precedence(current_chunk, Precedence::Unary);
@@ -214,7 +223,7 @@ impl<'s, 'a: 's> Parser<'s, 'a> {
 
     fn identifier_constant(&mut self, current_chunk: &mut Chunk, name: &Token) -> u8 {
         let token_span = name.span;
-        let value = ObjString::from_u8(self.intern, &token_span[1..token_span.len() - 1]);
+        let value = ObjString::from_u8(self.intern, token_span);
         self.make_constant(current_chunk, Value::from_obj(value))
     }
 
@@ -321,7 +330,7 @@ fn get_rule<'a, 'b, 'c, 'd>(token_type: TokenType) -> ParseRule<'a, 'b, 'c, 'd> 
         parse_rule(None, Some(Parser::binary), Precedence::Comparison),
         parse_rule(None, Some(Parser::binary), Precedence::Comparison),
         parse_rule(None, Some(Parser::binary), Precedence::Comparison),
-        parse_rule(None, None, Precedence::None),
+        parse_rule(Some(Parser::variable), None, Precedence::None),
         parse_rule(Some(Parser::string), None, Precedence::None),
         parse_rule(Some(Parser::number), None, Precedence::None),
         parse_rule(None, None, Precedence::None),

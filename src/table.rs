@@ -12,6 +12,10 @@ impl Table {
     pub fn insert(&mut self, key: Rc<ObjString>, value: Value) {
         self.0.insert(Key(key), value);
     }
+
+    pub fn get(&self, key: Rc<ObjString>) -> Option<&Value> {
+        self.0.get(&Key(key))
+    }
 }
 
 #[derive(Debug, Eq)]
