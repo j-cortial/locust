@@ -8,7 +8,7 @@ use crate::{
     chunk::{
         Chunk, OP_ADD, OP_CONSTANT, OP_DEFINE_GLOBAL, OP_DIVIDE, OP_EQUAL, OP_FALSE, OP_GET_GLOBAL,
         OP_GREATER, OP_LESS, OP_MULTIPLY, OP_NEGATE, OP_NIL, OP_NOT, OP_POP, OP_PRINT, OP_RETURN,
-        OP_SUBTRACT, OP_TRUE,
+        OP_SET_GLOBAL, OP_SUBTRACT, OP_TRUE,
     },
     compiler::compile,
     debug::disassemble_instruction,
@@ -81,15 +81,24 @@ impl VM {
                     if let Some(value) = self.globals.get(name) {
                         self.stack.push(value.clone());
                     } else {
-                        self.runtime_error("Undefined variable {name}");
+                        self.runtime_error("Undefined variable {&*name}");
                         return InterpretResult::RuntimeError;
                     }
                 }
                 OP_DEFINE_GLOBAL => {
                     let constant = self.read_constant();
                     let name = constant.as_string_rc();
-                    self.globals.insert(name, self.stack.peek(0).unwrap());
+                    self.globals.set(name, self.stack.peek(0).unwrap());
                     self.stack.pop();
+                }
+                OP_SET_GLOBAL => {
+                    let constant = self.read_constant();
+                    let name = constant.as_string_rc();
+                    if self.globals.set(name.clone(), self.stack.peek(0).unwrap()).is_none() {
+                        self.globals.delete(name);
+                        self.runtime_error("Undefined variable {&*name}");
+                        return InterpretResult::RuntimeError;
+                    }
                 }
                 OP_EQUAL => {
                     let b = self.stack.pop();

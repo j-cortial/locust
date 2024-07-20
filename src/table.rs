@@ -9,12 +9,16 @@ use crate::{object::ObjString, value::Value};
 pub struct Table(HashMap<Key, Value>);
 
 impl Table {
-    pub fn insert(&mut self, key: Rc<ObjString>, value: Value) {
-        self.0.insert(Key(key), value);
+    pub fn set(&mut self, key: Rc<ObjString>, value: Value) -> Option<Value> {
+        self.0.insert(Key(key), value)
     }
 
     pub fn get(&self, key: Rc<ObjString>) -> Option<&Value> {
         self.0.get(&Key(key))
+    }
+
+    pub fn delete(&mut self, key: Rc<ObjString>) -> Option<Value> {
+        self.0.remove(&Key(key))
     }
 }
 

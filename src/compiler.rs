@@ -3,7 +3,7 @@ use num_traits::{FromPrimitive, ToPrimitive};
 
 use crate::{
     chunk::{
-        Chunk, OP_ADD, OP_CONSTANT, OP_DEFINE_GLOBAL, OP_DIVIDE, OP_EQUAL, OP_FALSE, OP_GET_GLOBAL, OP_GREATER, OP_LESS, OP_MULTIPLY, OP_NEGATE, OP_NIL, OP_NOT, OP_POP, OP_PRINT, OP_RETURN, OP_SUBTRACT, OP_TRUE
+        Chunk, OP_ADD, OP_CONSTANT, OP_DEFINE_GLOBAL, OP_DIVIDE, OP_EQUAL, OP_FALSE, OP_GET_GLOBAL, OP_GREATER, OP_LESS, OP_MULTIPLY, OP_NEGATE, OP_NIL, OP_NOT, OP_POP, OP_PRINT, OP_RETURN, OP_SET_GLOBAL, OP_SUBTRACT, OP_TRUE
     },
     debug::disassemble,
     object::{Intern, ObjString},
@@ -131,7 +131,7 @@ impl<'s, 'a: 's> Parser<'s, 'a> {
         }
     }
 
-    fn binary(&mut self, current_chunk: &mut Chunk) {
+    fn binary(&mut self, current_chunk: &mut Chunk, _can_assign: bool) {
         let operator_type = self.previous.unwrap().kind;
         let rule = get_rule(operator_type);
         self.parse_precedence(current_chunk, rule.precedence + 1);
@@ -152,7 +152,7 @@ impl<'s, 'a: 's> Parser<'s, 'a> {
         };
     }
 
-    fn literal(&mut self, current_chunk: &mut Chunk) {
+    fn literal(&mut self, current_chunk: &mut Chunk, _can_assign: bool) {
         match self.previous.unwrap().kind {
             TokenType::False => self.emit_byte(current_chunk, OP_FALSE),
             TokenType::Nil => self.emit_byte(current_chunk, OP_NIL),
@@ -161,12 +161,12 @@ impl<'s, 'a: 's> Parser<'s, 'a> {
         }
     }
 
-    fn grouping(&mut self, current_chunk: &mut Chunk) {
+    fn grouping(&mut self, current_chunk: &mut Chunk, _can_assign: bool) {
         self.expression(current_chunk);
         self.consume(TokenType::RightParen, "Expect '(' after expression");
     }
 
-    fn number(&mut self, current_chunk: &mut Chunk) {
+    fn number(&mut self, current_chunk: &mut Chunk, _can_assign: bool) {
         let value: f64 = from_utf8(self.previous.unwrap().span)
             .unwrap()
             .parse()
@@ -174,22 +174,27 @@ impl<'s, 'a: 's> Parser<'s, 'a> {
         self.emit_constant(current_chunk, Value::Number(value));
     }
 
-    fn string(&mut self, current_chunk: &mut Chunk) {
+    fn string(&mut self, current_chunk: &mut Chunk, _can_assign: bool) {
         let token_span = self.previous.unwrap().span;
         let obj_string = ObjString::from_u8(self.intern, &token_span[1..token_span.len() - 1]);
         self.emit_constant(current_chunk, Value::from_obj(obj_string));
     }
 
-    fn named_variable(&mut self, current_chunk: &mut Chunk, name: Token) {
+    fn named_variable(&mut self, current_chunk: &mut Chunk, name: Token, can_assign: bool) {
         let arg = self.identifier_constant(current_chunk, &name);
-        self.emit_bytes(current_chunk, OP_GET_GLOBAL, arg);
+        if can_assign && self.match_token(TokenType::Equal) {
+            self.expression(current_chunk);
+            self.emit_bytes(current_chunk, OP_SET_GLOBAL, arg);
+        } else {
+            self.emit_bytes(current_chunk, OP_GET_GLOBAL, arg);
+        }
     }
 
-    fn variable(&mut self, current_chunk: &mut Chunk) {
-        self.named_variable(current_chunk, self.previous.unwrap());
+    fn variable(&mut self, current_chunk: &mut Chunk, can_assign: bool) {
+        self.named_variable(current_chunk, self.previous.unwrap(), can_assign);
     }
 
-    fn unary(&mut self, current_chunk: &mut Chunk) {
+    fn unary(&mut self, current_chunk: &mut Chunk, _can_assign: bool) {
         let operator_type = self.previous.unwrap().kind;
         self.parse_precedence(current_chunk, Precedence::Unary);
         match operator_type {
@@ -210,12 +215,16 @@ impl<'s, 'a: 's> Parser<'s, 'a> {
         let prefix_rule = get_rule(self.previous.unwrap().kind).prefix;
         match prefix_rule {
             None => self.error("Expect expression"),
-            Some(f) => {
-                f(self, current_chunk);
+            Some(prefix_rule) => {
+                let can_assign = precedence <= Precedence::Assignment;
+                prefix_rule(self, current_chunk, can_assign);
                 while precedence <= get_rule(self.current.unwrap().kind).precedence {
                     self.advance();
-                    let infix_rule = get_rule(self.previous.unwrap().kind).infix;
-                    infix_rule.unwrap()(self, current_chunk);
+                    let infix_rule = get_rule(self.previous.unwrap().kind).infix.unwrap();
+                    infix_rule(self, current_chunk, can_assign);
+                }
+                if can_assign && self.match_token(TokenType::Equal) {
+                    self.error("Invalid assignment target")
                 }
             }
         }
@@ -409,4 +418,4 @@ const fn parse_rule<'a, 'b, 'c, 'd>(
     }
 }
 
-type ParseFn<'a, 'b, 'c, 'd> = Option<fn(&'a mut Parser<'c, 'd>, &'b mut Chunk)>;
+type ParseFn<'a, 'b, 'c, 'd> = Option<fn(&'a mut Parser<'c, 'd>, &'b mut Chunk, bool)>;
