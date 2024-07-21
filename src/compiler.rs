@@ -4,8 +4,8 @@ use num_traits::{FromPrimitive, ToPrimitive};
 use crate::{
     chunk::{
         Chunk, OP_ADD, OP_CONSTANT, OP_DEFINE_GLOBAL, OP_DIVIDE, OP_EQUAL, OP_FALSE, OP_GET_GLOBAL,
-        OP_GREATER, OP_LESS, OP_MULTIPLY, OP_NEGATE, OP_NIL, OP_NOT, OP_POP, OP_PRINT, OP_RETURN,
-        OP_SET_GLOBAL, OP_SUBTRACT, OP_TRUE,
+        OP_GET_LOCAL, OP_GREATER, OP_LESS, OP_MULTIPLY, OP_NEGATE, OP_NIL, OP_NOT, OP_POP,
+        OP_PRINT, OP_RETURN, OP_SET_GLOBAL, OP_SET_LOCAL, OP_SUBTRACT, OP_TRUE,
     },
     debug::disassemble,
     object::{Intern, ObjString},
@@ -146,7 +146,7 @@ impl<'s, 'a: 's> Parser<'s, 'a> {
     fn end_scope(&mut self, current_chunk: &mut Chunk) {
         self.compiler.scope_depth -= 1;
         while let Some(l) = self.compiler.locals.last() {
-            if l.depth > self.compiler.scope_depth as i8 {
+            if l.depth > self.compiler.scope_depth {
                 self.emit_byte(current_chunk, OP_POP);
                 self.compiler.locals.pop();
             } else {
@@ -205,12 +205,24 @@ impl<'s, 'a: 's> Parser<'s, 'a> {
     }
 
     fn named_variable(&mut self, current_chunk: &mut Chunk, name: Token, can_assign: bool) {
-        let arg = self.identifier_constant(current_chunk, &name);
+        let (arg, ok) = self.compiler.resolve_local(&name);
+        if !ok {
+            self.error("Cannot read local variable in its own initializer");
+        }
+        let (get_op, set_op, arg) = if arg != -1 {
+            (OP_GET_LOCAL, OP_SET_LOCAL, arg)
+        } else {
+            (
+                OP_GET_GLOBAL,
+                OP_SET_GLOBAL,
+                self.identifier_constant(current_chunk, &name) as Depth,
+            )
+        };
         if can_assign && self.match_token(TokenType::Equal) {
             self.expression(current_chunk);
-            self.emit_bytes(current_chunk, OP_SET_GLOBAL, arg);
+            self.emit_bytes(current_chunk, set_op, arg as u8);
         } else {
-            self.emit_bytes(current_chunk, OP_GET_GLOBAL, arg);
+            self.emit_bytes(current_chunk, get_op, arg as u8);
         }
     }
 
@@ -265,13 +277,11 @@ impl<'s, 'a: 's> Parser<'s, 'a> {
             self.error("Too many local variables in function");
             return;
         }
-        self.compiler
-            .locals
-            .push(Local::new(*name, self.compiler.scope_depth as i8));
+        self.compiler.locals.push(Local::new(*name, -1));
     }
 
     fn declare_variable(&mut self) {
-        let scope_depth = self.compiler.scope_depth as i8;
+        let scope_depth = self.compiler.scope_depth;
         if scope_depth == 0 {
             return;
         }
@@ -301,6 +311,7 @@ impl<'s, 'a: 's> Parser<'s, 'a> {
 
     fn define_variable(&mut self, current_chunk: &mut Chunk, global: u8) {
         if self.compiler.scope_depth > 0 {
+            self.compiler.mark_initialized();
             return;
         }
         self.emit_bytes(current_chunk, OP_DEFINE_GLOBAL, global);
@@ -496,14 +507,15 @@ const fn parse_rule<'a, 'b, 'c, 'd>(
 
 type ParseFn<'a, 'b, 'c, 'd> = Option<fn(&'a mut Parser<'c, 'd>, &'b mut Chunk, bool)>;
 
+type Depth = i32;
 #[derive(Debug)]
 struct Local<'t> {
     name: Token<'t>,
-    depth: i8,
+    depth: Depth,
 }
 
 impl<'t> Local<'t> {
-    fn new(name: Token<'t>, depth: i8) -> Self {
+    fn new(name: Token<'t>, depth: Depth) -> Self {
         Self { name, depth }
     }
 }
@@ -512,8 +524,23 @@ const UINT8_COUNT: usize = 256;
 
 #[derive(Debug, Default)]
 struct Compiler<'l> {
-    //locals: [Local<'l>; UINT8_COUNT],
-    //local_count: i32,
     locals: Vec<Local<'l>>,
-    scope_depth: u8,
+    scope_depth: Depth,
+}
+
+impl<'l> Compiler<'l> {
+    fn resolve_local(&self, name: &Token<'l>) -> (Depth, bool) {
+        self.locals
+            .iter()
+            .rev()
+            .enumerate()
+            .find(|&(_, l)| l.name.identifier_equal(name))
+            .map_or((-1, true), |(i, l)| {
+                ((self.locals.len() - i) as i32 - 1, l.depth != -1)
+            })
+    }
+
+    fn mark_initialized(&mut self) {
+        self.locals.last_mut().map(|l| l.depth = self.scope_depth);
+    }
 }

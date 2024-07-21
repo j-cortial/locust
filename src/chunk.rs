@@ -9,6 +9,8 @@ pub enum OpCode {
     OpTrue,
     OpFalse,
     OpPop,
+    OpGetLocal,
+    OpSetLocal,
     OpGetGlobal,
     OpDefineGlobal,
     OpSetGlobal,
@@ -30,6 +32,8 @@ pub const OP_NIL: u8 = OpCode::OpNil as u8;
 pub const OP_TRUE: u8 = OpCode::OpTrue as u8;
 pub const OP_FALSE: u8 = OpCode::OpFalse as u8;
 pub const OP_POP: u8 = OpCode::OpPop as u8;
+pub const OP_GET_LOCAL: u8 = OpCode::OpGetLocal as u8;
+pub const OP_SET_LOCAL: u8 = OpCode::OpSetLocal as u8;
 pub const OP_GET_GLOBAL: u8 = OpCode::OpGetGlobal as u8;
 pub const OP_DEFINE_GLOBAL: u8 = OpCode::OpDefineGlobal as u8;
 pub const OP_SET_GLOBAL: u8 = OpCode::OpSetGlobal as u8;

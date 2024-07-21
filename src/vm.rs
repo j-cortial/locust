@@ -1,14 +1,14 @@
 use std::{
     array::from_fn,
     fmt::Display,
-    ops::{Div, Mul, Sub},
+    ops::{Div, Index, IndexMut, Mul, Sub},
 };
 
 use crate::{
     chunk::{
         Chunk, OP_ADD, OP_CONSTANT, OP_DEFINE_GLOBAL, OP_DIVIDE, OP_EQUAL, OP_FALSE, OP_GET_GLOBAL,
-        OP_GREATER, OP_LESS, OP_MULTIPLY, OP_NEGATE, OP_NIL, OP_NOT, OP_POP, OP_PRINT, OP_RETURN,
-        OP_SET_GLOBAL, OP_SUBTRACT, OP_TRUE,
+        OP_GET_LOCAL, OP_GREATER, OP_LESS, OP_MULTIPLY, OP_NEGATE, OP_NIL, OP_NOT, OP_POP,
+        OP_PRINT, OP_RETURN, OP_SET_GLOBAL, OP_SET_LOCAL, OP_SUBTRACT, OP_TRUE,
     },
     compiler::compile,
     debug::disassemble_instruction,
@@ -75,6 +75,14 @@ impl VM {
                 OP_POP => {
                     self.stack.pop();
                 }
+                OP_GET_LOCAL => {
+                    let slot = self.read_byte();
+                    self.stack.push(self.stack[slot as usize].clone());
+                }
+                OP_SET_LOCAL => {
+                    let slot = self.read_byte();
+                    self.stack[slot as usize] = self.stack.peek(0).unwrap();
+                }
                 OP_GET_GLOBAL => {
                     let constant = self.read_constant();
                     let name = constant.as_string_rc();
@@ -94,7 +102,11 @@ impl VM {
                 OP_SET_GLOBAL => {
                     let constant = self.read_constant();
                     let name = constant.as_string_rc();
-                    if self.globals.set(name.clone(), self.stack.peek(0).unwrap()).is_none() {
+                    if self
+                        .globals
+                        .set(name.clone(), self.stack.peek(0).unwrap())
+                        .is_none()
+                    {
                         self.globals.delete(name);
                         self.runtime_error("Undefined variable {&*name}");
                         return InterpretResult::RuntimeError;
@@ -265,6 +277,20 @@ impl<const MAX_SIZE: usize> ValueStack<MAX_SIZE> {
     fn pop(&mut self) -> Value {
         self.count -= 1;
         self.values[self.count].clone()
+    }
+}
+
+impl<const MAX_SIZE: usize> Index<usize> for ValueStack<MAX_SIZE> {
+    type Output = Value;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.values[index]
+    }
+}
+
+impl<const MAX_SIZE: usize> IndexMut<usize> for ValueStack<MAX_SIZE> {
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        &mut self.values[index]
     }
 }
 
