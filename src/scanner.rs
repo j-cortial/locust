@@ -1,3 +1,4 @@
+#[derive(Debug)]
 pub struct Scanner<'a> {
     source: &'a [u8],
     start: usize,
@@ -251,14 +252,20 @@ impl<'a> Scanner<'a> {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct Token<'a> {
     pub kind: TokenType,
     pub span: &'a [u8],
     pub line: i32,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+impl<'a> Token<'a> {
+    pub fn identifier_equal(&self, other: &Self) -> bool {
+        self.span == other.span
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TokenType {
     // Single-character tokens
     LeftParen = 0,

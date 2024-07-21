@@ -3,7 +3,9 @@ use num_traits::{FromPrimitive, ToPrimitive};
 
 use crate::{
     chunk::{
-        Chunk, OP_ADD, OP_CONSTANT, OP_DEFINE_GLOBAL, OP_DIVIDE, OP_EQUAL, OP_FALSE, OP_GET_GLOBAL, OP_GREATER, OP_LESS, OP_MULTIPLY, OP_NEGATE, OP_NIL, OP_NOT, OP_POP, OP_PRINT, OP_RETURN, OP_SET_GLOBAL, OP_SUBTRACT, OP_TRUE
+        Chunk, OP_ADD, OP_CONSTANT, OP_DEFINE_GLOBAL, OP_DIVIDE, OP_EQUAL, OP_FALSE, OP_GET_GLOBAL,
+        OP_GREATER, OP_LESS, OP_MULTIPLY, OP_NEGATE, OP_NIL, OP_NOT, OP_POP, OP_PRINT, OP_RETURN,
+        OP_SET_GLOBAL, OP_SUBTRACT, OP_TRUE,
     },
     debug::disassemble,
     object::{Intern, ObjString},
@@ -15,6 +17,7 @@ use std::{ops::Add, str::from_utf8};
 
 struct Parser<'s, 'a: 's> {
     scanner: &'a mut Scanner<'s>,
+    compiler: &'a mut Compiler<'s>,
     intern: &'a mut dyn Intern,
     current: Option<Token<'a>>,
     previous: Option<Token<'a>>,
@@ -23,9 +26,14 @@ struct Parser<'s, 'a: 's> {
 }
 
 impl<'s, 'a: 's> Parser<'s, 'a> {
-    fn new(scanner: &'a mut Scanner<'s>, intern: &'a mut dyn Intern) -> Self {
+    fn new(
+        scanner: &'a mut Scanner<'s>,
+        compiler: &'a mut Compiler<'s>,
+        intern: &'a mut dyn Intern,
+    ) -> Self {
         Self {
             scanner,
+            compiler,
             intern,
             current: None,
             previous: None,
@@ -127,6 +135,22 @@ impl<'s, 'a: 's> Parser<'s, 'a> {
         {
             if !self.had_error {
                 disassemble(current_chunk, "code");
+            }
+        }
+    }
+
+    fn begin_scope(&mut self) {
+        self.compiler.scope_depth += 1;
+    }
+
+    fn end_scope(&mut self, current_chunk: &mut Chunk) {
+        self.compiler.scope_depth -= 1;
+        while let Some(l) = self.compiler.locals.last() {
+            if l.depth > self.compiler.scope_depth as i8 {
+                self.emit_byte(current_chunk, OP_POP);
+                self.compiler.locals.pop();
+            } else {
+                break;
             }
         }
     }
@@ -236,17 +260,61 @@ impl<'s, 'a: 's> Parser<'s, 'a> {
         self.make_constant(current_chunk, Value::from_obj(value))
     }
 
+    fn add_local(&mut self, name: &Token<'s>) {
+        if self.compiler.locals.len() == UINT8_COUNT {
+            self.error("Too many local variables in function");
+            return;
+        }
+        self.compiler
+            .locals
+            .push(Local::new(*name, self.compiler.scope_depth as i8));
+    }
+
+    fn declare_variable(&mut self) {
+        let scope_depth = self.compiler.scope_depth as i8;
+        if scope_depth == 0 {
+            return;
+        }
+        let name = &self.previous.unwrap();
+        let local = self
+            .compiler
+            .locals
+            .iter()
+            .rev()
+            .find(|&l| l.depth != -1 && l.depth < scope_depth);
+        if let Some(local) = local {
+            if name.identifier_equal(&local.name) {
+                self.error("Already a variable with this name in this scope");
+            }
+        }
+        self.add_local(name);
+    }
+
     fn parse_variable(&mut self, current_chunk: &mut Chunk, error_message: &str) -> u8 {
         self.consume(TokenType::Identifier, error_message);
+        self.declare_variable();
+        if self.compiler.scope_depth > 0 {
+            return 0;
+        }
         self.identifier_constant(current_chunk, &self.previous.unwrap())
     }
 
     fn define_variable(&mut self, current_chunk: &mut Chunk, global: u8) {
+        if self.compiler.scope_depth > 0 {
+            return;
+        }
         self.emit_bytes(current_chunk, OP_DEFINE_GLOBAL, global);
     }
 
     fn expression(&mut self, current_chunk: &mut Chunk) {
         self.parse_precedence(current_chunk, Precedence::Assignment);
+    }
+
+    fn block(&mut self, current_chunk: &mut Chunk) {
+        while !self.check(TokenType::RightBrace) && !self.check(TokenType::Eof) {
+            self.declaration(current_chunk);
+        }
+        self.consume(TokenType::RightBrace, "Expect '}' after block");
     }
 
     fn var_declaration(&mut self, current_chunk: &mut Chunk) {
@@ -256,7 +324,10 @@ impl<'s, 'a: 's> Parser<'s, 'a> {
         } else {
             self.emit_byte(current_chunk, OP_NIL);
         }
-        self.consume(TokenType::SemiColon, "Expect ';' after variable declaration");
+        self.consume(
+            TokenType::SemiColon,
+            "Expect ';' after variable declaration",
+        );
         self.define_variable(current_chunk, global);
     }
 
@@ -312,6 +383,10 @@ impl<'s, 'a: 's> Parser<'s, 'a> {
     fn statement(&mut self, current_chunk: &mut Chunk) {
         if self.match_token(TokenType::Print) {
             self.print_statement(current_chunk);
+        } else if self.match_token(TokenType::LeftBrace) {
+            self.begin_scope();
+            self.block(current_chunk);
+            self.end_scope(current_chunk);
         } else {
             self.expression_statement(current_chunk);
         }
@@ -366,7 +441,8 @@ fn get_rule<'a, 'b, 'c, 'd>(token_type: TokenType) -> ParseRule<'a, 'b, 'c, 'd> 
 
 pub fn compile(source: &str, chunk: &mut Chunk, intern: &mut dyn Intern) -> bool {
     let mut scanner = Scanner::new(source.as_bytes());
-    let mut parser = Parser::new(&mut scanner, intern);
+    let mut compiler = Compiler::default();
+    let mut parser = Parser::new(&mut scanner, &mut compiler, intern);
     let compiling_chunk = chunk;
     parser.advance();
     while !parser.match_token(TokenType::Eof) {
@@ -419,3 +495,25 @@ const fn parse_rule<'a, 'b, 'c, 'd>(
 }
 
 type ParseFn<'a, 'b, 'c, 'd> = Option<fn(&'a mut Parser<'c, 'd>, &'b mut Chunk, bool)>;
+
+#[derive(Debug)]
+struct Local<'t> {
+    name: Token<'t>,
+    depth: i8,
+}
+
+impl<'t> Local<'t> {
+    fn new(name: Token<'t>, depth: i8) -> Self {
+        Self { name, depth }
+    }
+}
+
+const UINT8_COUNT: usize = 256;
+
+#[derive(Debug, Default)]
+struct Compiler<'l> {
+    //locals: [Local<'l>; UINT8_COUNT],
+    //local_count: i32,
+    locals: Vec<Local<'l>>,
+    scope_depth: u8,
+}
