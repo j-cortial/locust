@@ -1,7 +1,7 @@
 use crate::value;
 use value::{Value, ValueArray};
 
-use std::ops::Index;
+use std::ops::{Index, IndexMut};
 
 pub enum OpCode {
     OpConstant,
@@ -24,6 +24,7 @@ pub enum OpCode {
     OpNot,
     OpNegate,
     OpPrint,
+    OpJumpIfFalse,
     OpReturn,
 }
 
@@ -47,6 +48,7 @@ pub const OP_DIVIDE: u8 = OpCode::OpDivide as u8;
 pub const OP_NOT: u8 = OpCode::OpNot as u8;
 pub const OP_NEGATE: u8 = OpCode::OpNegate as u8;
 pub const OP_PRINT: u8 = OpCode::OpPrint as u8;
+pub const OP_JUMP_IF_FALSE: u8 = OpCode::OpJumpIfFalse as u8;
 pub const OP_RETURN: u8 = OpCode::OpReturn as u8;
 
 #[derive(Debug, Default)]
@@ -93,5 +95,11 @@ impl Index<usize> for Chunk {
 
     fn index(&self, index: usize) -> &Self::Output {
         &self.code[index]
+    }
+}
+
+impl IndexMut<usize> for Chunk {
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        &mut self.code[index]
     }
 }

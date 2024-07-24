@@ -4,8 +4,8 @@ use num_traits::{FromPrimitive, ToPrimitive};
 use crate::{
     chunk::{
         Chunk, OP_ADD, OP_CONSTANT, OP_DEFINE_GLOBAL, OP_DIVIDE, OP_EQUAL, OP_FALSE, OP_GET_GLOBAL,
-        OP_GET_LOCAL, OP_GREATER, OP_LESS, OP_MULTIPLY, OP_NEGATE, OP_NIL, OP_NOT, OP_POP,
-        OP_PRINT, OP_RETURN, OP_SET_GLOBAL, OP_SET_LOCAL, OP_SUBTRACT, OP_TRUE,
+        OP_GET_LOCAL, OP_GREATER, OP_JUMP_IF_FALSE, OP_LESS, OP_MULTIPLY, OP_NEGATE, OP_NIL,
+        OP_NOT, OP_POP, OP_PRINT, OP_RETURN, OP_SET_GLOBAL, OP_SET_LOCAL, OP_SUBTRACT, OP_TRUE,
     },
     debug::disassemble,
     object::{Intern, ObjString},
@@ -111,6 +111,13 @@ impl<'s, 'a: 's> Parser<'s, 'a> {
         self.emit_byte(current_chunk, byte2);
     }
 
+    fn emit_jump(&mut self, current_chunk: &mut Chunk, instruction: u8) -> usize {
+        self.emit_byte(current_chunk, instruction);
+        self.emit_byte(current_chunk, 0xff);
+        self.emit_byte(current_chunk, 0xff);
+        current_chunk.count() - 2
+    }
+
     fn emit_return(&mut self, current_chunk: &mut Chunk) {
         self.emit_byte(current_chunk, OP_RETURN);
     }
@@ -127,6 +134,16 @@ impl<'s, 'a: 's> Parser<'s, 'a> {
     fn emit_constant(&mut self, current_chunk: &mut Chunk, value: Value) {
         let constant_location = self.make_constant(current_chunk, value);
         self.emit_bytes(current_chunk, OP_CONSTANT, constant_location);
+    }
+
+    fn patch_jump(&mut self, current_chunk: &mut Chunk, offset: usize) {
+        // -2 to adjust for the bytecode for the jump offset itself
+        let jump = current_chunk.count() - offset - 2;
+        if jump > u16::MAX as usize {
+            self.error("Too much code to jump over");
+        }
+        current_chunk[offset] = ((jump >> 8) & 0xff) as u8;
+        current_chunk[offset + 1] = (jump & 0xff) as u8;
     }
 
     fn end_compiler(&mut self, current_chunk: &mut Chunk) {
@@ -348,6 +365,15 @@ impl<'s, 'a: 's> Parser<'s, 'a> {
         self.emit_byte(current_chunk, OP_POP);
     }
 
+    fn if_statement(&mut self, current_chunk: &mut Chunk) {
+        self.consume(TokenType::LeftParen, "Expect '(' after 'if'");
+        self.expression(current_chunk);
+        self.consume(TokenType::RightParen, "Expect ')' after condition");
+        let then_jump = self.emit_jump(current_chunk, OP_JUMP_IF_FALSE);
+        self.statement(current_chunk);
+        self.patch_jump(current_chunk, then_jump);
+    }
+
     fn print_statement(&mut self, current_chunk: &mut Chunk) {
         self.expression(current_chunk);
         self.consume(TokenType::SemiColon, "Expect ';' after value");
@@ -394,6 +420,8 @@ impl<'s, 'a: 's> Parser<'s, 'a> {
     fn statement(&mut self, current_chunk: &mut Chunk) {
         if self.match_token(TokenType::Print) {
             self.print_statement(current_chunk);
+        } else if self.match_token(TokenType::If) {
+            self.if_statement(current_chunk);
         } else if self.match_token(TokenType::LeftBrace) {
             self.begin_scope();
             self.block(current_chunk);
