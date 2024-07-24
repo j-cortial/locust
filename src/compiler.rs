@@ -216,6 +216,15 @@ impl<'s, 'a: 's> Parser<'s, 'a> {
         self.emit_constant(current_chunk, Value::Number(value));
     }
 
+    fn or(&mut self, current_chunk: &mut Chunk, _can_assign: bool) {
+        let else_jump = self.emit_jump(current_chunk, OP_JUMP_IF_FALSE);
+        let end_jump = self.emit_jump(current_chunk, OP_JUMP);
+        self.patch_jump(current_chunk, else_jump);
+        self.emit_byte(current_chunk, OP_POP);
+        self.parse_precedence(current_chunk, Precedence::Or);
+        self.patch_jump(current_chunk, end_jump);
+    }
+
     fn string(&mut self, current_chunk: &mut Chunk, _can_assign: bool) {
         let token_span = self.previous.unwrap().span;
         let obj_string = ObjString::from_u8(self.intern, &token_span[1..token_span.len() - 1]);
@@ -333,6 +342,13 @@ impl<'s, 'a: 's> Parser<'s, 'a> {
             return;
         }
         self.emit_bytes(current_chunk, OP_DEFINE_GLOBAL, global);
+    }
+
+    fn and(&mut self, current_chunk: &mut Chunk, _can_assign: bool) {
+        let end_jump = self.emit_jump(current_chunk, OP_JUMP_IF_FALSE);
+        self.emit_byte(current_chunk, OP_POP);
+        self.parse_precedence(current_chunk, Precedence::And);
+        self.patch_jump(current_chunk, end_jump);
     }
 
     fn expression(&mut self, current_chunk: &mut Chunk) {
@@ -464,15 +480,15 @@ fn get_rule<'a, 'b, 'c, 'd>(token_type: TokenType) -> ParseRule<'a, 'b, 'c, 'd> 
         parse_rule(Some(Parser::variable), None, Precedence::None),
         parse_rule(Some(Parser::string), None, Precedence::None),
         parse_rule(Some(Parser::number), None, Precedence::None),
-        parse_rule(None, None, Precedence::None),
-        parse_rule(None, None, Precedence::None),
-        parse_rule(None, None, Precedence::None),
-        parse_rule(Some(Parser::literal), None, Precedence::None),
-        parse_rule(None, None, Precedence::None),
+        parse_rule(None, Some(Parser::and), Precedence::And),
         parse_rule(None, None, Precedence::None),
         parse_rule(None, None, Precedence::None),
         parse_rule(Some(Parser::literal), None, Precedence::None),
         parse_rule(None, None, Precedence::None),
+        parse_rule(None, None, Precedence::None),
+        parse_rule(None, None, Precedence::None),
+        parse_rule(Some(Parser::literal), None, Precedence::None),
+        parse_rule(None, Some(Parser::or), Precedence::Or),
         parse_rule(None, None, Precedence::None),
         parse_rule(None, None, Precedence::None),
         parse_rule(None, None, Precedence::None),
