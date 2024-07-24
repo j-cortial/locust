@@ -55,8 +55,7 @@ impl Value {
         match self {
             Value::Bool(b) => !*b,
             Value::Nil => true,
-            Value::Number(_) => false,
-            Value::Obj(_) => todo!(),
+            _ => false,
         }
     }
 
