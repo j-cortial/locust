@@ -39,6 +39,8 @@ pub fn disassemble_instruction(chunk: &Chunk, offset: usize) -> usize {
         OP_NOT => simple_instruction("OP_NOT", offset),
         OP_NEGATE => simple_instruction("OP_NEGATE", offset),
         OP_PRINT => simple_instruction("OP_PRINT", offset),
+        OP_JUMP => jump_instruction("OP_JUMP", 1, chunk, offset),
+        OP_JUMP_IF_FALSE => jump_instruction("OP_JUMP_IF_FALSE", 1, chunk, offset),
         OP_RETURN => simple_instruction("OP_RETURN", offset),
         _ => {
             println!("Unknown opcode {instruction}");
@@ -63,4 +65,12 @@ fn byte_instruction(name: &str, chunk: &Chunk, offset: usize) -> usize {
     let slot = chunk[offset + 1];
     println!("{name:16} {slot:4}");
     offset + 2
+}
+
+fn jump_instruction(name: &str, sign: i32, chunk: &Chunk, offset: usize) -> usize {
+    let mut jump = (chunk[offset + 1] as u16) << 8;
+    jump |= chunk[offset + 2] as u16;
+    let to = if sign < 0 { (offset + 3) - jump as usize} else { offset + 3 + jump as usize };
+    println!("{name:16} {offset:4} -> {to}");
+    offset + 3
 }

@@ -24,6 +24,7 @@ pub enum OpCode {
     OpNot,
     OpNegate,
     OpPrint,
+    OpJump,
     OpJumpIfFalse,
     OpReturn,
 }
@@ -48,6 +49,7 @@ pub const OP_DIVIDE: u8 = OpCode::OpDivide as u8;
 pub const OP_NOT: u8 = OpCode::OpNot as u8;
 pub const OP_NEGATE: u8 = OpCode::OpNegate as u8;
 pub const OP_PRINT: u8 = OpCode::OpPrint as u8;
+pub const OP_JUMP: u8 = OpCode::OpJump as u8;
 pub const OP_JUMP_IF_FALSE: u8 = OpCode::OpJumpIfFalse as u8;
 pub const OP_RETURN: u8 = OpCode::OpReturn as u8;
 
