@@ -394,6 +394,53 @@ impl<'s, 'a: 's> Parser<'s, 'a> {
         self.emit_byte(current_chunk, OP_POP);
     }
 
+    fn for_statement(&mut self, current_chunk: &mut Chunk) {
+        self.begin_scope();
+        self.consume(TokenType::LeftParen, "Expect '(' after 'for'");
+        if self.match_token(TokenType::SemiColon) {
+            // No initializer
+        } else if self.match_token(TokenType::Var) {
+            self.var_declaration(current_chunk);
+        } else {
+            self.expression_statement(current_chunk);
+        }
+
+        let mut loop_start = current_chunk.count();
+        let exit_jump = if self.match_token(TokenType::SemiColon) {
+            None
+        } else {
+            self.expression(current_chunk);
+            self.consume(TokenType::SemiColon, "Expect ';' after loop condition");
+
+            // Jump out of the loop if the condition is false
+            let exit_jump = self.emit_jump(current_chunk, OP_JUMP_IF_FALSE);
+            self.emit_byte(current_chunk, OP_POP);
+            Some(exit_jump)
+        };
+
+        if !self.match_token(TokenType::RightParen) {
+            let body_jump = self.emit_jump(current_chunk, OP_JUMP);
+            let increment_start = current_chunk.count();
+            self.expression(current_chunk);
+            self.emit_byte(current_chunk, OP_POP);
+            self.consume(TokenType::RightParen, "Expect ')' after for clauses");
+
+            self.emit_loop(current_chunk, loop_start);
+            loop_start = increment_start;
+            self.patch_jump(current_chunk, body_jump);
+        }
+
+        self.statement(current_chunk);
+        self.emit_loop(current_chunk, loop_start);
+
+        if let Some(exit_jump) = exit_jump {
+            self.patch_jump(current_chunk, exit_jump);
+            self.emit_byte(current_chunk, OP_POP); // Condition
+        }
+
+        self.end_scope(current_chunk);
+    }
+
     fn if_statement(&mut self, current_chunk: &mut Chunk) {
         self.consume(TokenType::LeftParen, "Expect '(' after 'if'");
         self.expression(current_chunk);
@@ -471,6 +518,8 @@ impl<'s, 'a: 's> Parser<'s, 'a> {
     fn statement(&mut self, current_chunk: &mut Chunk) {
         if self.match_token(TokenType::Print) {
             self.print_statement(current_chunk);
+        } else if self.match_token(TokenType::For) {
+            self.for_statement(current_chunk);
         } else if self.match_token(TokenType::If) {
             self.if_statement(current_chunk);
         } else if self.match_token(TokenType::While) {
