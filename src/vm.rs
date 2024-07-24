@@ -6,10 +6,7 @@ use std::{
 
 use crate::{
     chunk::{
-        Chunk, OP_ADD, OP_CONSTANT, OP_DEFINE_GLOBAL, OP_DIVIDE, OP_EQUAL, OP_FALSE, OP_GET_GLOBAL,
-        OP_GET_LOCAL, OP_GREATER, OP_JUMP, OP_JUMP_IF_FALSE, OP_LESS, OP_MULTIPLY, OP_NEGATE,
-        OP_NIL, OP_NOT, OP_POP, OP_PRINT, OP_RETURN, OP_SET_GLOBAL, OP_SET_LOCAL, OP_SUBTRACT,
-        OP_TRUE,
+        Chunk, OP_ADD, OP_CONSTANT, OP_DEFINE_GLOBAL, OP_DIVIDE, OP_EQUAL, OP_FALSE, OP_GET_GLOBAL, OP_GET_LOCAL, OP_GREATER, OP_JUMP, OP_JUMP_IF_FALSE, OP_LESS, OP_LOOP, OP_MULTIPLY, OP_NEGATE, OP_NIL, OP_NOT, OP_POP, OP_PRINT, OP_RETURN, OP_SET_GLOBAL, OP_SET_LOCAL, OP_SUBTRACT, OP_TRUE
     },
     compiler::compile,
     debug::disassemble_instruction,
@@ -184,6 +181,10 @@ impl VM {
                     if self.stack.peek(0).unwrap().is_falsey() {
                         self.ip += offset as usize;
                     }
+                }
+                OP_LOOP => {
+                    let offset = self.read_short();
+                    self.ip -= offset as usize;
                 }
                 OP_RETURN => {
                     // Exit interpreter

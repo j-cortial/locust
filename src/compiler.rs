@@ -4,9 +4,9 @@ use num_traits::{FromPrimitive, ToPrimitive};
 use crate::{
     chunk::{
         Chunk, OP_ADD, OP_CONSTANT, OP_DEFINE_GLOBAL, OP_DIVIDE, OP_EQUAL, OP_FALSE, OP_GET_GLOBAL,
-        OP_GET_LOCAL, OP_GREATER, OP_JUMP, OP_JUMP_IF_FALSE, OP_LESS, OP_MULTIPLY, OP_NEGATE,
-        OP_NIL, OP_NOT, OP_POP, OP_PRINT, OP_RETURN, OP_SET_GLOBAL, OP_SET_LOCAL, OP_SUBTRACT,
-        OP_TRUE,
+        OP_GET_LOCAL, OP_GREATER, OP_JUMP, OP_JUMP_IF_FALSE, OP_LESS, OP_LOOP, OP_MULTIPLY,
+        OP_NEGATE, OP_NIL, OP_NOT, OP_POP, OP_PRINT, OP_RETURN, OP_SET_GLOBAL, OP_SET_LOCAL,
+        OP_SUBTRACT, OP_TRUE,
     },
     debug::disassemble,
     object::{Intern, ObjString},
@@ -110,6 +110,18 @@ impl<'s, 'a: 's> Parser<'s, 'a> {
     fn emit_bytes(&mut self, current_chunk: &mut Chunk, byte1: u8, byte2: u8) {
         self.emit_byte(current_chunk, byte1);
         self.emit_byte(current_chunk, byte2);
+    }
+
+    fn emit_loop(&mut self, current_chunk: &mut Chunk, loop_start: usize) {
+        self.emit_byte(current_chunk, OP_LOOP);
+
+        let offset = current_chunk.count() - loop_start + 2;
+        if offset > u16::MAX as usize {
+            self.error("Loop body too large");
+        }
+
+        self.emit_byte(current_chunk, (offset >> 8 & 0xff) as u8);
+        self.emit_byte(current_chunk, (offset & 0xff) as u8);
     }
 
     fn emit_jump(&mut self, current_chunk: &mut Chunk, instruction: u8) -> usize {
@@ -404,6 +416,21 @@ impl<'s, 'a: 's> Parser<'s, 'a> {
         self.emit_byte(current_chunk, OP_PRINT);
     }
 
+    fn while_statement(&mut self, current_chunk: &mut Chunk) {
+        self.consume(TokenType::LeftParen, "Expect '(' after 'while'");
+        self.expression(current_chunk);
+        let loop_start = current_chunk.count();
+        self.consume(TokenType::RightParen, "Expect ')' after condition");
+
+        let exit_jump = self.emit_jump(current_chunk, OP_JUMP_IF_FALSE);
+        self.emit_byte(current_chunk, OP_POP);
+        self.statement(current_chunk);
+        self.emit_loop(current_chunk, loop_start);
+
+        self.patch_jump(current_chunk, exit_jump);
+        self.emit_byte(current_chunk, OP_POP);
+    }
+
     fn synchronize(&mut self) {
         self.panic_mode = false;
 
@@ -446,6 +473,8 @@ impl<'s, 'a: 's> Parser<'s, 'a> {
             self.print_statement(current_chunk);
         } else if self.match_token(TokenType::If) {
             self.if_statement(current_chunk);
+        } else if self.match_token(TokenType::While) {
+            self.while_statement(current_chunk);
         } else if self.match_token(TokenType::LeftBrace) {
             self.begin_scope();
             self.block(current_chunk);
