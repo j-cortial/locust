@@ -580,17 +580,21 @@ fn get_rule<'a, 'b, 'c, 'd>(token_type: TokenType) -> ParseRule<'a, 'b, 'c, 'd> 
     rules[token_type as usize]
 }
 
-pub fn compile(source: &str, chunk: &mut Chunk, intern: &mut dyn Intern) -> bool {
+pub fn compile(source: &str, intern: &mut dyn Intern) -> Option<Chunk> {
     let mut scanner = Scanner::new(source.as_bytes());
     let mut compiler = Compiler::default();
     let mut parser = Parser::new(&mut scanner, &mut compiler, intern);
-    let compiling_chunk = chunk;
+    let mut compiling_chunk = Chunk::new();
     parser.advance();
     while !parser.match_token(TokenType::Eof) {
-        parser.declaration(compiling_chunk);
+        parser.declaration(&mut compiling_chunk);
     }
-    parser.end_compiler(compiling_chunk);
-    parser.had_error
+    parser.end_compiler(&mut compiling_chunk);
+    if parser.had_error {
+        None
+    } else {
+        Some(compiling_chunk)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, ToPrimitive, FromPrimitive)]

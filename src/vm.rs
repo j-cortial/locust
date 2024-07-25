@@ -44,10 +44,12 @@ impl VM {
     }
 
     pub fn interpret(&mut self, source: &str) -> InterpretResult {
-        let mut chunk = Chunk::new();
-        if compile(source, &mut chunk, &mut self.strings) {
-            return InterpretResult::CompileError;
-        }
+        let chunk = match compile(source, &mut self.strings) {
+            Some(chunk) => chunk,
+            None => {
+                return InterpretResult::CompileError;
+            }
+        };
         self.chunk = chunk;
         self.ip = 0;
         self.run()
