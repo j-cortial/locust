@@ -22,9 +22,8 @@ use value::Value;
 
 const STACK_MAX: usize = 256;
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct VM {
-    chunk: Chunk,
     ip: usize,
     stack: ValueStack<STACK_MAX>,
     globals: Table,
@@ -40,7 +39,12 @@ pub enum InterpretResult {
 
 impl VM {
     pub fn new() -> Self {
-        Self::default()
+        Self {
+            ip: Default::default(),
+            stack: Default::default(),
+            globals: Default::default(),
+            strings: Default::default(),
+        }
     }
 
     pub fn interpret(&mut self, source: &str) -> InterpretResult {
@@ -50,22 +54,21 @@ impl VM {
                 return InterpretResult::CompileError;
             }
         };
-        self.chunk = chunk;
         self.ip = 0;
-        self.run()
+        self.run(&chunk)
     }
 
-    fn run(&mut self) -> InterpretResult {
+    fn run(&mut self, chunk: &Chunk) -> InterpretResult {
         loop {
             #[cfg(feature = "debug_trace_execution")]
             {
                 println!("          {}", self.stack);
-                disassemble_instruction(&self.chunk, self.ip);
+                disassemble_instruction(chunk, self.ip);
             }
-            let instruction = self.read_byte();
+            let instruction = self.read_byte(chunk);
             match instruction {
                 OP_CONSTANT => {
-                    let constant = self.read_constant();
+                    let constant = self.read_constant(chunk);
                     self.stack.push(constant);
                 }
                 OP_NIL => self.stack.push(Value::Nil),
@@ -75,31 +78,31 @@ impl VM {
                     self.stack.pop();
                 }
                 OP_GET_LOCAL => {
-                    let slot = self.read_byte();
+                    let slot = self.read_byte(chunk);
                     self.stack.push(self.stack[slot as usize].clone());
                 }
                 OP_SET_LOCAL => {
-                    let slot = self.read_byte();
+                    let slot = self.read_byte(chunk);
                     self.stack[slot as usize] = self.stack.peek(0).unwrap();
                 }
                 OP_GET_GLOBAL => {
-                    let constant = self.read_constant();
+                    let constant = self.read_constant(chunk);
                     let name = constant.as_string_rc();
                     if let Some(value) = self.globals.get(name) {
                         self.stack.push(value.clone());
                     } else {
-                        self.runtime_error("Undefined variable {&*name}");
+                        self.runtime_error(chunk, "Undefined variable {&*name}");
                         return InterpretResult::RuntimeError;
                     }
                 }
                 OP_DEFINE_GLOBAL => {
-                    let constant = self.read_constant();
+                    let constant = self.read_constant(chunk);
                     let name = constant.as_string_rc();
                     self.globals.set(name, self.stack.peek(0).unwrap());
                     self.stack.pop();
                 }
                 OP_SET_GLOBAL => {
-                    let constant = self.read_constant();
+                    let constant = self.read_constant(chunk);
                     let name = constant.as_string_rc();
                     if self
                         .globals
@@ -107,7 +110,7 @@ impl VM {
                         .is_none()
                     {
                         self.globals.delete(name);
-                        self.runtime_error("Undefined variable {&*name}");
+                        self.runtime_error(chunk, "Undefined variable {&*name}");
                         return InterpretResult::RuntimeError;
                     }
                 }
@@ -117,12 +120,12 @@ impl VM {
                     self.stack.push(Value::Bool(a == b));
                 }
                 OP_GREATER => {
-                    if !self.binary_op_bool(PartialOrd::gt) {
+                    if !self.binary_op_bool(chunk, PartialOrd::gt) {
                         return InterpretResult::RuntimeError;
                     }
                 }
                 OP_LESS => {
-                    if !self.binary_op_bool(PartialOrd::lt) {
+                    if !self.binary_op_bool(chunk, PartialOrd::lt) {
                         return InterpretResult::RuntimeError;
                     }
                 }
@@ -131,29 +134,29 @@ impl VM {
                         && self.stack.peek(1).unwrap().is_string()
                     {
                         self.concatenate();
-                    } else if let Some(Value::Number(right)) = self.stack.peek(0) {
-                        if let Some(Value::Number(left)) = self.stack.peek(1) {
-                            self.stack.pop();
-                            self.stack.pop();
-                            self.stack.push(ValueContent::to_value(left + right));
-                        } else {
-                            self.runtime_error("Operands must be two numbers or two strings");
-                            return InterpretResult::RuntimeError;
-                        }
+                    } else if let (Some(Value::Number(right)), Some(Value::Number(left))) =
+                        (self.stack.peek(0), self.stack.peek(1))
+                    {
+                        self.stack.pop();
+                        self.stack.pop();
+                        self.stack.push(ValueContent::to_value(left + right));
+                    } else {
+                        self.runtime_error(chunk, "Operands must be two numbers or two strings");
+                        return InterpretResult::RuntimeError;
                     }
                 }
                 OP_SUBTRACT => {
-                    if !self.binary_op_num(Sub::sub) {
+                    if !self.binary_op_num(chunk, Sub::sub) {
                         return InterpretResult::RuntimeError;
                     }
                 }
                 OP_MULTIPLY => {
-                    if !self.binary_op_num(Mul::mul) {
+                    if !self.binary_op_num(chunk, Mul::mul) {
                         return InterpretResult::RuntimeError;
                     }
                 }
                 OP_DIVIDE => {
-                    if !self.binary_op_num(Div::div) {
+                    if !self.binary_op_num(chunk, Div::div) {
                         return InterpretResult::RuntimeError;
                     }
                 }
@@ -166,7 +169,7 @@ impl VM {
                     if let Some(Value::Number(number)) = value {
                         self.stack.push(Value::Number(-number));
                     } else {
-                        self.runtime_error("Operand must be a number");
+                        self.runtime_error(chunk, "Operand must be a number");
                         return InterpretResult::RuntimeError;
                     }
                 }
@@ -174,17 +177,17 @@ impl VM {
                     println!("{}", self.stack.pop());
                 }
                 OP_JUMP => {
-                    let offset = self.read_short();
+                    let offset = self.read_short(chunk);
                     self.ip += offset as usize;
                 }
                 OP_JUMP_IF_FALSE => {
-                    let offset = self.read_short();
+                    let offset = self.read_short(chunk);
                     if self.stack.peek(0).unwrap().is_falsey() {
                         self.ip += offset as usize;
                     }
                 }
                 OP_LOOP => {
-                    let offset = self.read_short();
+                    let offset = self.read_short(chunk);
                     self.ip -= offset as usize;
                 }
                 OP_RETURN => {
@@ -196,30 +199,30 @@ impl VM {
         }
     }
 
-    fn read_byte(&mut self) -> u8 {
-        let res = self.chunk[self.ip];
+    fn read_byte(&mut self, chunk: &Chunk) -> u8 {
+        let res = chunk[self.ip];
         self.ip += 1;
         res
     }
 
-    fn read_short(&mut self) -> u16 {
+    fn read_short(&mut self, chunk: &Chunk) -> u16 {
         self.ip += 2;
-        (self.chunk[self.ip - 2] as u16) << 8 | self.chunk[self.ip - 1] as u16
+        (chunk[self.ip - 2] as u16) << 8 | chunk[self.ip - 1] as u16
     }
 
-    fn read_constant(&mut self) -> Value {
-        let index = self.read_byte() as usize;
-        self.chunk.constants()[index].clone()
+    fn read_constant(&mut self, chunk: &Chunk) -> Value {
+        let index = self.read_byte(chunk) as usize;
+        chunk.constants()[index].clone()
     }
 
-    fn runtime_error(&self, msg: &str) {
+    fn runtime_error(&self, chunk: &Chunk, msg: &str) {
         eprintln!("{msg}");
         let instruction = self.ip - 1;
-        let line = self.chunk.lines()[instruction];
+        let line = chunk.lines()[instruction];
         eprintln!("[line {line}] in script");
     }
 
-    fn binary_op<R, F>(&mut self, f: F) -> bool
+    fn binary_op<R, F>(&mut self, chunk: &Chunk, f: F) -> bool
     where
         R: ValueContent,
         F: Fn(f64, f64) -> R,
@@ -232,22 +235,22 @@ impl VM {
                 return true;
             }
         }
-        self.runtime_error("Operands must be numbers");
+        self.runtime_error(chunk, "Operands must be numbers");
         false
     }
 
-    fn binary_op_num<F>(&mut self, f: F) -> bool
+    fn binary_op_num<F>(&mut self, chunk: &Chunk, f: F) -> bool
     where
         F: Fn(f64, f64) -> f64,
     {
-        self.binary_op(f)
+        self.binary_op(chunk, f)
     }
 
-    fn binary_op_bool<F>(&mut self, f: F) -> bool
+    fn binary_op_bool<F>(&mut self, chunk: &Chunk, f: F) -> bool
     where
         F: Fn(&f64, &f64) -> bool,
     {
-        self.binary_op(|a, b| f(&a, &b))
+        self.binary_op(chunk, |a, b| f(&a, &b))
     }
 
     fn concatenate(&mut self) {
