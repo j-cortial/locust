@@ -6,7 +6,10 @@ use std::{
 
 use crate::{
     chunk::{
-        Chunk, OP_ADD, OP_CONSTANT, OP_DEFINE_GLOBAL, OP_DIVIDE, OP_EQUAL, OP_FALSE, OP_GET_GLOBAL, OP_GET_LOCAL, OP_GREATER, OP_JUMP, OP_JUMP_IF_FALSE, OP_LESS, OP_LOOP, OP_MULTIPLY, OP_NEGATE, OP_NIL, OP_NOT, OP_POP, OP_PRINT, OP_RETURN, OP_SET_GLOBAL, OP_SET_LOCAL, OP_SUBTRACT, OP_TRUE
+        Chunk, OP_ADD, OP_CONSTANT, OP_DEFINE_GLOBAL, OP_DIVIDE, OP_EQUAL, OP_FALSE, OP_GET_GLOBAL,
+        OP_GET_LOCAL, OP_GREATER, OP_JUMP, OP_JUMP_IF_FALSE, OP_LESS, OP_LOOP, OP_MULTIPLY,
+        OP_NEGATE, OP_NIL, OP_NOT, OP_POP, OP_PRINT, OP_RETURN, OP_SET_GLOBAL, OP_SET_LOCAL,
+        OP_SUBTRACT, OP_TRUE,
     },
     compiler::compile,
     debug::disassemble_instruction,
@@ -19,6 +22,7 @@ use value::Value;
 
 const STACK_MAX: usize = 256;
 
+#[derive(Debug, Default)]
 pub struct VM {
     chunk: Chunk,
     ip: usize,
@@ -27,6 +31,7 @@ pub struct VM {
     strings: Table,
 }
 
+#[derive(Debug, Clone, Copy)]
 pub enum InterpretResult {
     Ok,
     CompileError,
@@ -35,13 +40,7 @@ pub enum InterpretResult {
 
 impl VM {
     pub fn new() -> Self {
-        Self {
-            chunk: Default::default(),
-            ip: 0,
-            stack: Default::default(),
-            globals: Default::default(),
-            strings: Default::default(),
-        }
+        Self::default()
     }
 
     pub fn interpret(&mut self, source: &str) -> InterpretResult {
