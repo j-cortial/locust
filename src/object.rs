@@ -3,8 +3,11 @@ use std::fmt::Debug;
 use std::fmt::Display;
 use std::rc::Rc;
 
+use crate::chunk::Chunk;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ObjType {
+    Function,
     String,
 }
 
@@ -13,14 +16,49 @@ pub trait Obj: Debug + Any {
     fn as_obj_string(&self) -> Option<&ObjString> {
         None
     }
+    fn as_obj_function(&self) -> Option<&ObjFunction> {
+        None
+    }
 }
 
 impl Display for dyn Obj {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self.kind() {
-            ObjType::String => write!(f, "{}", self.as_obj_string().unwrap())?,
-        };
-        Ok(())
+            ObjType::String => write!(f, "{}", self.as_obj_string().unwrap()),
+            ObjType::Function => write!(f, "{}", self.as_obj_function().unwrap()),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct ObjFunction {
+    arity: u32,
+    chunk: Chunk,
+    name: Option<Rc<ObjString>>,
+}
+
+impl Obj for ObjFunction {
+    fn kind(&self) -> ObjType {
+        ObjType::Function
+    }
+    fn as_obj_function(&self) -> Option<&ObjFunction> {
+        Some(self)
+    }
+}
+
+impl ObjFunction {
+    pub fn new() -> Rc<Self> {
+        Rc::new(ObjFunction {
+            arity: 0,
+            chunk: Default::default(),
+            name: None,
+        })
+    }
+}
+
+impl Display for ObjFunction {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "fn <{}>", self.name.as_ref().unwrap())
     }
 }
 
@@ -55,8 +93,7 @@ impl ObjString {
 
 impl Display for ObjString {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.content)?;
-        Ok(())
+        write!(f, "{}", self.content)
     }
 }
 
