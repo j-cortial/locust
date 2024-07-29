@@ -9,12 +9,12 @@ use crate::{
         OP_SUBTRACT, OP_TRUE,
     },
     debug::disassemble,
-    object::{Intern, ObjFunction, ObjString},
+    object::{Intern, Obj, ObjFunction, ObjString},
     scanner::{Scanner, Token, TokenType},
     value::Value,
 };
 
-use std::{ops::Add, str::from_utf8};
+use std::{mem, ops::Add, str::from_utf8};
 
 struct Parser<'s, 'a: 's> {
     scanner: &'a mut Scanner<'s>,
@@ -172,15 +172,25 @@ impl<'s, 'a: 's> Parser<'s, 'a> {
         current_chunk[offset + 1] = (jump & 0xff) as u8;
     }
 
-    fn end_compiler(&mut self) {
+    fn end_compiler(&mut self) -> Box<ObjFunction> {
         self.emit_return();
+
+        let mut function = Box::new(ObjFunction::new());
+        mem::swap(&mut self.compiler.function, &mut function);
+
         #[cfg(feature = "debug_print_code")]
         {
             if !self.had_error {
-                let current_chunk = &mut self.compiler.function.chunk;
-                disassemble(current_chunk, "code");
+                let current_chunk = &mut function.chunk;
+                let function_name = match function.name {
+                    None => "<script>",
+                    Some(ref s) => &s.content,
+                };
+                disassemble(current_chunk, function_name);
             }
         }
+
+        function
     }
 
     fn begin_scope(&mut self) {
@@ -603,7 +613,7 @@ fn get_rule<'a, 'c, 'd>(token_type: TokenType) -> ParseRule<'a, 'c, 'd> {
     rules[token_type as usize]
 }
 
-pub fn compile(source: &str, intern: &mut dyn Intern) -> Option<Chunk> {
+pub fn compile(source: &str, intern: &mut dyn Intern) -> Option<Box<ObjFunction>> {
     let mut scanner = Scanner::new(source.as_bytes());
     let mut compiler = Compiler::new(FunctionType::Script);
     let mut parser = Parser::new(&mut scanner, &mut compiler, intern);
@@ -611,12 +621,11 @@ pub fn compile(source: &str, intern: &mut dyn Intern) -> Option<Chunk> {
     while !parser.match_token(TokenType::Eof) {
         parser.declaration();
     }
-    parser.end_compiler();
+    let res = parser.end_compiler();
     if parser.had_error {
         None
     } else {
-        let compiled_chunk = parser.compiler.function.chunk.clone();
-        Some(compiled_chunk)
+        Some(res)
     }
 }
 
@@ -698,7 +707,14 @@ impl<'l> Compiler<'l> {
         Self {
             function: Box::new(ObjFunction::new()),
             function_type,
-            locals: vec![Local::new(Token {kind: TokenType::Eof, span: b"", line: 0}, 0)],
+            locals: vec![Local::new(
+                Token {
+                    kind: TokenType::Eof,
+                    span: b"",
+                    line: 0,
+                },
+                0,
+            )],
             scope_depth: Default::default(),
         }
     }

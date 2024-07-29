@@ -49,14 +49,14 @@ impl VM {
     }
 
     pub fn interpret(&mut self, source: &str) -> InterpretResult {
-        let chunk = match compile(source, &mut self.strings) {
-            Some(chunk) => chunk,
+        let script = match compile(source, &mut self.strings) {
+            Some(script) => script,
             None => {
                 return InterpretResult::CompileError;
             }
         };
         self.ip = 0;
-        self.run(&chunk)
+        self.run(&script.chunk)
     }
 
     fn run(&mut self, chunk: &Chunk) -> InterpretResult {

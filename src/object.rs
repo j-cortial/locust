@@ -39,9 +39,9 @@ impl Display for dyn Obj {
 
 #[derive(Debug)]
 pub struct ObjFunction {
-    arity: u32,
+    pub arity: u32,
     pub chunk: Chunk,
-    name: Option<Rc<ObjString>>,
+    pub name: Option<Rc<ObjString>>,
 }
 
 impl Obj for ObjFunction {
@@ -66,13 +66,16 @@ impl ObjFunction {
 
 impl Display for ObjFunction {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "fn <{}>", self.name.as_ref().unwrap())
+        match self.name.as_ref() {
+            Some(n) => write!(f, "fn <{}>", n),
+            None => write!(f, "<script>"),
+        }
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ObjString {
-    content: String,
+    pub content: String,
 }
 
 impl Obj for ObjString {
