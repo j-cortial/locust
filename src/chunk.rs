@@ -55,7 +55,7 @@ pub const OP_JUMP_IF_FALSE: u8 = OpCode::OpJumpIfFalse as u8;
 pub const OP_LOOP: u8 = OpCode::OpLoop as u8;
 pub const OP_RETURN: u8 = OpCode::OpReturn as u8;
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct Chunk {
     code: Vec<u8>,
     lines: Vec<i32>,

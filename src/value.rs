@@ -1,5 +1,8 @@
+use std::any::Any;
 use std::ops::Deref;
 use std::{fmt::Display, rc::Rc};
+
+extern crate downcast_rs;
 
 use crate::object::{Obj, ObjString, ObjType};
 
@@ -29,7 +32,7 @@ impl Display for Value {
             }
             Self::Number(n) => write!(f, "{n}")?,
             Self::Nil => write!(f, "nil")?,
-            Self::Obj(o) => write!(f, "{}", &*o)?,
+            Self::Obj(o) => write!(f, "{}", o)?,
         })
     }
 }
@@ -101,11 +104,18 @@ impl Value {
     }
 
     pub fn as_string(&self) -> &ObjString {
-        self.as_obj().as_obj_string().unwrap()
+        self.as_obj().downcast_ref().unwrap()
+    }
+
+    pub fn as_any_rc(&self) -> Rc<dyn Any> {
+        if let Value::Obj(obj) = self {
+            return obj.clone()
+        }
+        panic!()
     }
 
     pub fn as_string_rc(&self) -> Rc<ObjString> {
-        Rc::downcast(self.as_obj_rc()).unwrap()
+        Rc::downcast(self.as_any_rc()).unwrap()
     }
 }
 
@@ -125,7 +135,7 @@ impl ValueContent for f64 {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct ValueArray {
     values: Vec<Value>,
 }

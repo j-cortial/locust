@@ -27,7 +27,7 @@ struct Key(Rc<ObjString>);
 
 impl Key {
     fn underlying(&self) -> &ObjString {
-        &*self.0
+        &self.0
     }
 }
 

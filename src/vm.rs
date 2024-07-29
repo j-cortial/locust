@@ -13,6 +13,7 @@ use crate::{
     },
     compiler::compile,
     debug::disassemble_instruction,
+    object::ObjString,
     table::Table,
     value::ValueContent,
 };
@@ -256,9 +257,11 @@ impl VM {
     fn concatenate(&mut self) {
         let b = self.stack.pop();
         let a = self.stack.pop();
-        self.stack.push(Value::from_obj(
-            a.as_string().concatenate(&mut self.strings, b.as_string()),
-        ));
+        self.stack.push(Value::from_obj(ObjString::concatenate(
+            &mut self.strings,
+            &a.as_string(),
+            &b.as_string(),
+        )));
     }
 }
 

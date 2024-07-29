@@ -1,7 +1,10 @@
-use std::any::Any;
 use std::fmt::Debug;
 use std::fmt::Display;
 use std::rc::Rc;
+
+extern crate downcast_rs;
+use downcast_rs::impl_downcast;
+use downcast_rs::Downcast;
 
 use crate::chunk::Chunk;
 
@@ -11,15 +14,19 @@ pub enum ObjType {
     String,
 }
 
-pub trait Obj: Debug + Any {
+pub trait Obj: Debug + Downcast {
     fn kind(&self) -> ObjType;
+
     fn as_obj_string(&self) -> Option<&ObjString> {
         None
     }
+
     fn as_obj_function(&self) -> Option<&ObjFunction> {
         None
     }
 }
+
+impl_downcast!(Obj);
 
 impl Display for dyn Obj {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -33,7 +40,7 @@ impl Display for dyn Obj {
 #[derive(Debug)]
 pub struct ObjFunction {
     arity: u32,
-    chunk: Chunk,
+    pub chunk: Chunk,
     name: Option<Rc<ObjString>>,
 }
 
@@ -41,18 +48,19 @@ impl Obj for ObjFunction {
     fn kind(&self) -> ObjType {
         ObjType::Function
     }
+
     fn as_obj_function(&self) -> Option<&ObjFunction> {
         Some(self)
     }
 }
 
 impl ObjFunction {
-    pub fn new() -> Rc<Self> {
-        Rc::new(ObjFunction {
+    pub fn new() -> Self {
+        ObjFunction {
             arity: 0,
             chunk: Default::default(),
             name: None,
-        })
+        }
     }
 }
 
@@ -86,8 +94,8 @@ impl ObjString {
         Self::new(intern, String::from_utf8(chars.to_owned()).unwrap())
     }
 
-    pub fn concatenate(&self, intern: &mut dyn Intern, other: &Self) -> Rc<Self> {
-        Self::new(intern, format!("{}{}", self.content, other.content))
+    pub fn concatenate(intern: &mut dyn Intern, first: &Self, second: &Self) -> Rc<Self> {
+        Self::new(intern, format!("{}{}", first.content, second.content))
     }
 }
 
