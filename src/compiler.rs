@@ -698,7 +698,7 @@ impl<'l> Compiler<'l> {
         Self {
             function: Box::new(ObjFunction::new()),
             function_type,
-            locals: Default::default(),
+            locals: vec![Local::new(Token {kind: TokenType::Eof, span: b"", line: 0}, 0)],
             scope_depth: Default::default(),
         }
     }
