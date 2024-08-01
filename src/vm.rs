@@ -7,14 +7,14 @@ use std::{
 
 use crate::{
     chunk::{
-        Chunk, OP_ADD, OP_CONSTANT, OP_DEFINE_GLOBAL, OP_DIVIDE, OP_EQUAL, OP_FALSE, OP_GET_GLOBAL,
-        OP_GET_LOCAL, OP_GREATER, OP_JUMP, OP_JUMP_IF_FALSE, OP_LESS, OP_LOOP, OP_MULTIPLY,
-        OP_NEGATE, OP_NIL, OP_NOT, OP_POP, OP_PRINT, OP_RETURN, OP_SET_GLOBAL, OP_SET_LOCAL,
-        OP_SUBTRACT, OP_TRUE,
+        Chunk, OP_ADD, OP_CALL, OP_CONSTANT, OP_DEFINE_GLOBAL, OP_DIVIDE, OP_EQUAL, OP_FALSE,
+        OP_GET_GLOBAL, OP_GET_LOCAL, OP_GREATER, OP_JUMP, OP_JUMP_IF_FALSE, OP_LESS, OP_LOOP,
+        OP_MULTIPLY, OP_NEGATE, OP_NIL, OP_NOT, OP_POP, OP_PRINT, OP_RETURN, OP_SET_GLOBAL,
+        OP_SET_LOCAL, OP_SUBTRACT, OP_TRUE,
     },
     compiler::compile,
     debug::disassemble_instruction,
-    object::{Intern, ObjFunction, ObjString},
+    object::{Intern, ObjFunction, ObjString, ObjType},
     table::Table,
     value::ValueContent,
 };
@@ -33,40 +33,52 @@ struct CallFrameInfo {
 }
 
 impl CallFrameInfo {
-    fn new(function: Rc<ObjFunction>) -> Self {
+    fn new(function: Rc<ObjFunction>, value_offset: usize) -> Self {
         Self {
             function,
             ip: 0,
-            value_offset: 0,
+            value_offset: value_offset,
         }
     }
 }
 
 #[derive(Debug)]
 struct CallFrame<'f, 'v> {
-    info: &'f mut CallFrameInfo,
+    frames: &'f mut FrameStack,
     slots: ValueSlice<'v, STACK_MAX>,
 }
 
 impl<'f, 'v> CallFrame<'f, 'v> {
+    fn info(&self) -> &CallFrameInfo {
+        self.frames.0.last().unwrap()
+    }
+
+    fn info_mut(&mut self) -> &mut CallFrameInfo {
+        self.frames.0.last_mut().unwrap()
+    }
+
     fn ip(&self) -> usize {
-        self.info.ip
+        self.info().ip
     }
 
     fn ip_mut(&mut self) -> &mut usize {
-        &mut self.info.ip
+        &mut self.info_mut().ip
     }
 
-    fn stack(&self) -> &ValueStack<STACK_MAX> {
-        &self.slots.stack
+    fn stack(&self) -> &ValueSlice<STACK_MAX> {
+        &self.slots
     }
 
-    fn stack_mut(&mut self) -> &mut ValueStack<STACK_MAX> {
-        &mut self.slots.stack
+    fn stack_mut(&mut self) -> &mut ValueSlice<'v, STACK_MAX> {
+        &mut self.slots
     }
 
     fn chunk(&self) -> &Chunk {
-        &self.info.function.chunk
+        &self.info().function.chunk
+    }
+
+    fn release(self) -> (&'f mut FrameStack, &'v mut ValueStack<STACK_MAX>) {
+        (self.frames, self.slots.stack)
     }
 }
 
@@ -78,10 +90,10 @@ impl FrameStack {
         &'f mut self,
         stack: &'v mut ValueStack<STACK_MAX>,
     ) -> CallFrame<'f, 'v> {
-        let info = self.0.last_mut().unwrap();
+        let info = self.0.last().unwrap();
         let offset = info.value_offset;
         CallFrame {
-            info,
+            frames: self,
             slots: ValueSlice::new(stack, offset),
         }
     }
@@ -119,7 +131,7 @@ impl VM {
                 return InterpretResult::CompileError;
             }
         };
-        let script = CallFrameInfo::new(script.into());
+        let script = CallFrameInfo::new(script.into(), 0);
         self.frames.0.push(script);
         self.run()
     }
@@ -261,6 +273,14 @@ impl VM {
                     let offset = Self::read_short(&mut frame);
                     *frame.ip_mut() -= offset as usize;
                 }
+                OP_CALL => {
+                    let arg_count = Self::read_byte(&mut frame);
+                    let function = frame.stack().peek(arg_count as usize).unwrap();
+                    if !Self::call_value(frame, function, arg_count) {
+                        return InterpretResult::RuntimeError;
+                    }
+                    frame = self.frames.active_frame(&mut self.stack);
+                }
                 OP_RETURN => {
                     // Exit interpreter
                     return InterpretResult::Ok;
@@ -337,6 +357,31 @@ impl VM {
                 &b.as_string(),
             )));
     }
+
+    fn call_value(frame: CallFrame, callee: Value, arg_count: u8) -> bool {
+        if let Value::Obj(callee) = callee {
+            match callee.kind() {
+                ObjType::Function => {
+                    return Self::call(
+                        frame,
+                        Rc::downcast::<ObjFunction>(callee).unwrap(),
+                        arg_count,
+                    );
+                }
+                _ => {}
+            }
+        }
+        Self::runtime_error(&frame, "Can only call functions and classes");
+        false
+    }
+
+    fn call(frame: CallFrame, function: Rc<ObjFunction>, arg_count: u8) -> bool {
+        let value_offset = frame.slots.stack.count - arg_count as usize - 1;
+        let (frames, _values) = frame.release();
+        let frame_info = CallFrameInfo::new(function, value_offset);
+        frames.0.push(frame_info);
+        true
+    }
 }
 
 #[derive(Debug)]
@@ -410,5 +455,59 @@ struct ValueSlice<'a, const MAX_SIZE: usize> {
 impl<'a, const MAX_SIZE: usize> ValueSlice<'a, MAX_SIZE> {
     fn new(stack: &'a mut ValueStack<MAX_SIZE>, offset: usize) -> Self {
         Self { stack, offset }
+    }
+
+    fn count(&self) -> usize {
+        self.stack.count - self.offset
+    }
+
+    fn values(&self) -> &[Value] {
+        &self.stack.values[self.offset..]
+    }
+
+    fn values_mut(&mut self) -> &mut [Value] {
+        &mut self.stack.values[self.offset..]
+    }
+
+    fn peek(&self, distance: usize) -> Option<Value> {
+        if self.count() > distance {
+            Some(self.values()[self.count() - (distance + 1)].clone())
+        } else {
+            None
+        }
+    }
+
+    fn push(&mut self, value: Value) {
+        let count = self.count();
+        self.values_mut()[count] = value;
+        self.stack.count += 1;
+    }
+
+    fn pop(&mut self) -> Value {
+        self.stack.count -= 1;
+        self.values()[self.count()].clone()
+    }
+}
+
+impl<'a, const MAX_SIZE: usize> Index<usize> for ValueSlice<'a, MAX_SIZE> {
+    type Output = Value;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.values()[index]
+    }
+}
+
+impl<'a, const MAX_SIZE: usize> IndexMut<usize> for ValueSlice<'a, MAX_SIZE> {
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        &mut self.values_mut()[index]
+    }
+}
+
+impl<'a, const MAX_SIZE: usize> Display for ValueSlice<'a, MAX_SIZE> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for value in &self.values()[..self.count()] {
+            write!(f, "[ {value} ]")?;
+        }
+        Ok(())
     }
 }

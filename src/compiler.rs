@@ -3,10 +3,10 @@ use num_traits::{FromPrimitive, ToPrimitive};
 
 use crate::{
     chunk::{
-        OP_ADD, OP_CONSTANT, OP_DEFINE_GLOBAL, OP_DIVIDE, OP_EQUAL, OP_FALSE, OP_GET_GLOBAL,
-        OP_GET_LOCAL, OP_GREATER, OP_JUMP, OP_JUMP_IF_FALSE, OP_LESS, OP_LOOP, OP_MULTIPLY,
-        OP_NEGATE, OP_NIL, OP_NOT, OP_POP, OP_PRINT, OP_RETURN, OP_SET_GLOBAL, OP_SET_LOCAL,
-        OP_SUBTRACT, OP_TRUE,
+        OP_ADD, OP_CALL, OP_CONSTANT, OP_DEFINE_GLOBAL, OP_DIVIDE, OP_EQUAL, OP_FALSE,
+        OP_GET_GLOBAL, OP_GET_LOCAL, OP_GREATER, OP_JUMP, OP_JUMP_IF_FALSE, OP_LESS, OP_LOOP,
+        OP_MULTIPLY, OP_NEGATE, OP_NIL, OP_NOT, OP_POP, OP_PRINT, OP_RETURN, OP_SET_GLOBAL,
+        OP_SET_LOCAL, OP_SUBTRACT, OP_TRUE,
     },
     debug::disassemble,
     object::{Intern, ObjFunction, ObjString},
@@ -234,6 +234,11 @@ impl<'s, 'a: 's> Parser<'s, 'a> {
         };
     }
 
+    fn call(&mut self, _can_assign: bool) {
+        let arg_count = self.argument_list();
+        self.emit_bytes(OP_CALL, arg_count);
+    }
+
     fn literal(&mut self, _can_assign: bool) {
         match self.previous.unwrap().kind {
             TokenType::False => self.emit_byte(OP_FALSE),
@@ -384,6 +389,24 @@ impl<'s, 'a: 's> Parser<'s, 'a> {
         self.emit_bytes(OP_DEFINE_GLOBAL, global);
     }
 
+    fn argument_list(&mut self) -> u8 {
+        let mut arg_count = 0;
+        if !self.check(TokenType::RightParen) {
+            loop {
+                self.expression();
+                if arg_count == 255 {
+                    self.error("Cannot have more than 255 arguments");
+                }
+                arg_count += 1;
+                if !self.match_token(TokenType::Comma) {
+                    break;
+                }
+            }
+        }
+        self.consume(TokenType::RightParen, "Expect ')' after arguments");
+        arg_count
+    }
+
     fn and(&mut self, _can_assign: bool) {
         let end_jump = self.emit_jump(OP_JUMP_IF_FALSE);
         self.emit_byte(OP_POP);
@@ -410,14 +433,14 @@ impl<'s, 'a: 's> Parser<'s, 'a> {
 
         self.begin_scope();
         self.consume(TokenType::LeftParen, "Expect '(' after function name");
-        if !self.check(TokenType::Comma) {
+        if !self.check(TokenType::RightParen) {
             loop {
                 self.compiler.function.arity += 1;
                 if self.compiler.function.arity > 255 {
                     self.error_at_current("Cannot have more than 255 parameters");
-                    let constant = self.parse_variable("Expect parameter name");
-                    self.define_variable(constant);
                 }
+                let constant = self.parse_variable("Expect parameter name");
+                self.define_variable(constant);
                 if !self.match_token(TokenType::Comma) {
                     break;
                 }
@@ -612,7 +635,7 @@ impl<'s, 'a: 's> Parser<'s, 'a> {
 
 fn get_rule<'a, 'c, 'd>(token_type: TokenType) -> ParseRule<'a, 'c, 'd> {
     let rules: [ParseRule; 40] = [
-        parse_rule(Some(Parser::grouping), None, Precedence::None),
+        parse_rule(Some(Parser::grouping), Some(Parser::call), Precedence::Call),
         parse_rule(None, None, Precedence::None),
         parse_rule(None, None, Precedence::None),
         parse_rule(None, None, Precedence::None),
