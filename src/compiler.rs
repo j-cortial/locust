@@ -3,22 +3,22 @@ use num_traits::{FromPrimitive, ToPrimitive};
 
 use crate::{
     chunk::{
-        Chunk, OP_ADD, OP_CONSTANT, OP_DEFINE_GLOBAL, OP_DIVIDE, OP_EQUAL, OP_FALSE, OP_GET_GLOBAL,
+        OP_ADD, OP_CONSTANT, OP_DEFINE_GLOBAL, OP_DIVIDE, OP_EQUAL, OP_FALSE, OP_GET_GLOBAL,
         OP_GET_LOCAL, OP_GREATER, OP_JUMP, OP_JUMP_IF_FALSE, OP_LESS, OP_LOOP, OP_MULTIPLY,
         OP_NEGATE, OP_NIL, OP_NOT, OP_POP, OP_PRINT, OP_RETURN, OP_SET_GLOBAL, OP_SET_LOCAL,
         OP_SUBTRACT, OP_TRUE,
     },
     debug::disassemble,
-    object::{Intern, Obj, ObjFunction, ObjString},
+    object::{Intern, ObjFunction, ObjString},
     scanner::{Scanner, Token, TokenType},
     value::Value,
 };
 
-use std::{mem, ops::Add, str::from_utf8};
+use std::{mem, ops::Add, rc::Rc, str::from_utf8};
 
 struct Parser<'s, 'a: 's> {
     scanner: &'a mut Scanner<'s>,
-    compiler: &'a mut Compiler<'s>,
+    compiler: Box<Compiler<'s>>,
     intern: &'a mut dyn Intern,
     current: Option<Token<'a>>,
     previous: Option<Token<'a>>,
@@ -29,7 +29,7 @@ struct Parser<'s, 'a: 's> {
 impl<'s, 'a: 's> Parser<'s, 'a> {
     fn new(
         scanner: &'a mut Scanner<'s>,
-        compiler: &'a mut Compiler<'s>,
+        compiler: Box<Compiler<'s>>,
         intern: &'a mut dyn Intern,
     ) -> Self {
         Self {
@@ -188,6 +188,10 @@ impl<'s, 'a: 's> Parser<'s, 'a> {
                 };
                 disassemble(current_chunk, function_name);
             }
+        }
+
+        if let Some(enclosing_compiler) = self.compiler.enclosing.take() {
+            self.compiler = enclosing_compiler;
         }
 
         function
@@ -398,6 +402,29 @@ impl<'s, 'a: 's> Parser<'s, 'a> {
         self.consume(TokenType::RightBrace, "Expect '}' after block");
     }
 
+    fn function(&mut self, kind: FunctionType) {
+        let mut compiler = Box::new(Compiler::new(kind, None));
+        mem::swap(&mut self.compiler, &mut compiler);
+        self.compiler.enclosing = Some(compiler);
+
+        self.begin_scope();
+        self.consume(TokenType::LeftParen, "Expect '(' after function name");
+        self.consume(TokenType::RightParen, "Expect ')' after parameters");
+        self.consume(TokenType::LeftBrace, "Expect '{' before function body");
+        self.block();
+
+        let function = self.end_compiler();
+        let function = self.make_constant(Value::from_obj(Rc::<ObjFunction>::from(function)));
+        self.emit_bytes(OP_CONSTANT, function);
+    }
+
+    fn fun_declaration(&mut self) {
+        let global = self.parse_variable("Expect function name");
+        self.compiler.mark_initialized();
+        self.function(FunctionType::Function);
+        self.define_variable(global);
+    }
+
     fn var_declaration(&mut self) {
         let global = self.parse_variable("Expect variable name");
         if self.match_token(TokenType::Equal) {
@@ -538,7 +565,9 @@ impl<'s, 'a: 's> Parser<'s, 'a> {
     }
 
     fn declaration(&mut self) {
-        if self.match_token(TokenType::Var) {
+        if self.match_token(TokenType::Fun) {
+            self.fun_declaration();
+        } else if self.match_token(TokenType::Var) {
             self.var_declaration();
         } else {
             self.statement();
@@ -615,8 +644,8 @@ fn get_rule<'a, 'c, 'd>(token_type: TokenType) -> ParseRule<'a, 'c, 'd> {
 
 pub fn compile(source: &str, intern: &mut dyn Intern) -> Option<Box<ObjFunction>> {
     let mut scanner = Scanner::new(source.as_bytes());
-    let mut compiler = Compiler::new(FunctionType::Script);
-    let mut parser = Parser::new(&mut scanner, &mut compiler, intern);
+    let mut compiler = Box::new(Compiler::new(FunctionType::Script, None));
+    let mut parser = Parser::new(&mut scanner, compiler, intern);
     parser.advance();
     while !parser.match_token(TokenType::Eof) {
         parser.declaration();
@@ -696,6 +725,7 @@ const UINT8_COUNT: usize = 256;
 
 #[derive(Debug)]
 struct Compiler<'l> {
+    enclosing: Option<Box<Compiler<'l>>>,
     function: Box<ObjFunction>,
     function_type: FunctionType,
     locals: Vec<Local<'l>>,
@@ -703,8 +733,9 @@ struct Compiler<'l> {
 }
 
 impl<'l> Compiler<'l> {
-    fn new(function_type: FunctionType) -> Self {
+    fn new(function_type: FunctionType, enclosing: Option<Box<Compiler<'l>>>) -> Self {
         Self {
+            enclosing,
             function: Box::new(ObjFunction::new()),
             function_type,
             locals: vec![Local::new(
@@ -731,6 +762,9 @@ impl<'l> Compiler<'l> {
     }
 
     fn mark_initialized(&mut self) {
+        if self.scope_depth == 0 {
+            return;
+        }
         self.locals.last_mut().map(|l| l.depth = self.scope_depth);
     }
 }
