@@ -2,6 +2,7 @@ use std::{
     array::from_fn,
     fmt::Display,
     ops::{Div, Index, IndexMut, Mul, Sub},
+    rc::Rc,
 };
 
 use crate::{
@@ -13,7 +14,7 @@ use crate::{
     },
     compiler::compile,
     debug::disassemble_instruction,
-    object::ObjString,
+    object::{Intern, ObjFunction, ObjString},
     table::Table,
     value::ValueContent,
 };
@@ -21,11 +22,74 @@ use crate::{
 use crate::value;
 use value::Value;
 
-const STACK_MAX: usize = 256;
+const FRAME_MAX: usize = 64;
+const STACK_MAX: usize = FRAME_MAX * u8::MAX as usize;
+
+#[derive(Debug)]
+struct CallFrameInfo {
+    function: Rc<ObjFunction>,
+    ip: usize,
+    value_offset: usize,
+}
+
+impl CallFrameInfo {
+    fn new(function: Rc<ObjFunction>) -> Self {
+        Self {
+            function,
+            ip: 0,
+            value_offset: 0,
+        }
+    }
+}
+
+#[derive(Debug)]
+struct CallFrame<'f, 'v> {
+    info: &'f mut CallFrameInfo,
+    slots: ValueSlice<'v, STACK_MAX>,
+}
+
+impl<'f, 'v> CallFrame<'f, 'v> {
+    fn ip(&self) -> usize {
+        self.info.ip
+    }
+
+    fn ip_mut(&mut self) -> &mut usize {
+        &mut self.info.ip
+    }
+
+    fn stack(&self) -> &ValueStack<STACK_MAX> {
+        &self.slots.stack
+    }
+
+    fn stack_mut(&mut self) -> &mut ValueStack<STACK_MAX> {
+        &mut self.slots.stack
+    }
+
+    fn chunk(&self) -> &Chunk {
+        &self.info.function.chunk
+    }
+}
+
+#[derive(Debug, Default)]
+struct FrameStack(Vec<CallFrameInfo>);
+
+impl FrameStack {
+    fn active_frame<'f, 'v>(
+        &'f mut self,
+        stack: &'v mut ValueStack<STACK_MAX>,
+    ) -> CallFrame<'f, 'v> {
+        let info = self.0.last_mut().unwrap();
+        let offset = info.value_offset;
+        CallFrame {
+            info,
+            slots: ValueSlice::new(stack, offset),
+        }
+    }
+}
 
 #[derive(Debug)]
 pub struct VM {
-    ip: usize,
+    frames: FrameStack,
     stack: ValueStack<STACK_MAX>,
     globals: Table,
     strings: Table,
@@ -41,7 +105,7 @@ pub enum InterpretResult {
 impl VM {
     pub fn new() -> Self {
         Self {
-            ip: Default::default(),
+            frames: Default::default(),
             stack: Default::default(),
             globals: Default::default(),
             strings: Default::default(),
@@ -55,141 +119,147 @@ impl VM {
                 return InterpretResult::CompileError;
             }
         };
-        self.ip = 0;
-        self.run(&script.chunk)
+        let script = CallFrameInfo::new(script.into());
+        self.frames.0.push(script);
+        self.run()
     }
 
-    fn run(&mut self, chunk: &Chunk) -> InterpretResult {
+    fn run(&mut self) -> InterpretResult {
+        let mut frame = self.frames.active_frame(&mut self.stack);
         loop {
             #[cfg(feature = "debug_trace_execution")]
             {
-                println!("          {}", self.stack);
-                disassemble_instruction(chunk, self.ip);
+                println!("          {}", frame.stack());
+                disassemble_instruction(frame.chunk(), frame.ip());
             }
-            let instruction = self.read_byte(chunk);
+            let instruction = Self::read_byte(&mut frame);
             match instruction {
                 OP_CONSTANT => {
-                    let constant = self.read_constant(chunk);
-                    self.stack.push(constant);
+                    let constant = Self::read_constant(&mut frame);
+                    frame.stack_mut().push(constant);
                 }
-                OP_NIL => self.stack.push(Value::Nil),
-                OP_TRUE => self.stack.push(Value::Bool(true)),
-                OP_FALSE => self.stack.push(Value::Bool(false)),
+                OP_NIL => frame.stack_mut().push(Value::Nil),
+                OP_TRUE => frame.stack_mut().push(Value::Bool(true)),
+                OP_FALSE => frame.stack_mut().push(Value::Bool(false)),
                 OP_POP => {
-                    self.stack.pop();
+                    frame.stack_mut().pop();
                 }
                 OP_GET_LOCAL => {
-                    let slot = self.read_byte(chunk);
-                    self.stack.push(self.stack[slot as usize].clone());
+                    let slot = Self::read_byte(&mut frame);
+                    let value = frame.stack_mut()[slot as usize].clone();
+                    frame.stack_mut().push(value);
                 }
                 OP_SET_LOCAL => {
-                    let slot = self.read_byte(chunk);
-                    self.stack[slot as usize] = self.stack.peek(0).unwrap();
+                    let slot = Self::read_byte(&mut frame);
+                    frame.stack_mut()[slot as usize] = frame.stack_mut().peek(0).unwrap();
                 }
                 OP_GET_GLOBAL => {
-                    let constant = self.read_constant(chunk);
+                    let constant = Self::read_constant(&mut frame);
                     let name = constant.as_string_rc();
                     if let Some(value) = self.globals.get(name) {
-                        self.stack.push(value.clone());
+                        frame.stack_mut().push(value.clone());
                     } else {
-                        self.runtime_error(chunk, "Undefined variable {&*name}");
+                        Self::runtime_error(&mut frame, "Undefined variable {&*name}");
                         return InterpretResult::RuntimeError;
                     }
                 }
                 OP_DEFINE_GLOBAL => {
-                    let constant = self.read_constant(chunk);
+                    let constant = Self::read_constant(&mut frame);
                     let name = constant.as_string_rc();
-                    self.globals.set(name, self.stack.peek(0).unwrap());
-                    self.stack.pop();
+                    self.globals.set(name, frame.stack_mut().peek(0).unwrap());
+                    frame.stack_mut().pop();
                 }
                 OP_SET_GLOBAL => {
-                    let constant = self.read_constant(chunk);
+                    let constant = Self::read_constant(&mut frame);
                     let name = constant.as_string_rc();
                     if self
                         .globals
-                        .set(name.clone(), self.stack.peek(0).unwrap())
+                        .set(name.clone(), frame.stack_mut().peek(0).unwrap())
                         .is_none()
                     {
                         self.globals.delete(name);
-                        self.runtime_error(chunk, "Undefined variable {&*name}");
+                        Self::runtime_error(&mut frame, "Undefined variable {&*name}");
                         return InterpretResult::RuntimeError;
                     }
                 }
                 OP_EQUAL => {
-                    let b = self.stack.pop();
-                    let a = self.stack.pop();
-                    self.stack.push(Value::Bool(a == b));
+                    let b = frame.stack_mut().pop();
+                    let a = frame.stack_mut().pop();
+                    frame.stack_mut().push(Value::Bool(a == b));
                 }
                 OP_GREATER => {
-                    if !self.binary_op_bool(chunk, PartialOrd::gt) {
+                    if !Self::binary_op_bool(&mut frame, PartialOrd::gt) {
                         return InterpretResult::RuntimeError;
                     }
                 }
                 OP_LESS => {
-                    if !self.binary_op_bool(chunk, PartialOrd::lt) {
+                    if !Self::binary_op_bool(&mut frame, PartialOrd::lt) {
                         return InterpretResult::RuntimeError;
                     }
                 }
                 OP_ADD => {
-                    if self.stack.peek(0).unwrap().is_string()
-                        && self.stack.peek(1).unwrap().is_string()
+                    if frame.stack_mut().peek(0).unwrap().is_string()
+                        && frame.stack_mut().peek(1).unwrap().is_string()
                     {
-                        self.concatenate();
+                        VM::concatenate(&mut self.strings, &mut frame);
                     } else if let (Some(Value::Number(right)), Some(Value::Number(left))) =
-                        (self.stack.peek(0), self.stack.peek(1))
+                        (frame.stack_mut().peek(0), frame.stack_mut().peek(1))
                     {
-                        self.stack.pop();
-                        self.stack.pop();
-                        self.stack.push(ValueContent::to_value(left + right));
+                        frame.stack_mut().pop();
+                        frame.stack_mut().pop();
+                        frame.stack_mut().push(ValueContent::to_value(left + right));
                     } else {
-                        self.runtime_error(chunk, "Operands must be two numbers or two strings");
+                        Self::runtime_error(
+                            &mut frame,
+                            "Operands must be two numbers or two strings",
+                        );
                         return InterpretResult::RuntimeError;
                     }
                 }
                 OP_SUBTRACT => {
-                    if !self.binary_op_num(chunk, Sub::sub) {
+                    if !Self::binary_op_num(&mut frame, Sub::sub) {
                         return InterpretResult::RuntimeError;
                     }
                 }
                 OP_MULTIPLY => {
-                    if !self.binary_op_num(chunk, Mul::mul) {
+                    if !Self::binary_op_num(&mut frame, Mul::mul) {
                         return InterpretResult::RuntimeError;
                     }
                 }
                 OP_DIVIDE => {
-                    if !self.binary_op_num(chunk, Div::div) {
+                    if !Self::binary_op_num(&mut frame, Div::div) {
                         return InterpretResult::RuntimeError;
                     }
                 }
                 OP_NOT => {
-                    let value = self.stack.pop();
-                    self.stack.push(Value::Bool(value.is_falsey()));
+                    let value = frame.stack_mut().pop();
+                    frame.stack_mut().push(Value::Bool(value.is_falsey()));
                 }
                 OP_NEGATE => {
-                    let value = self.stack.peek(0);
+                    let value = frame.stack_mut().peek(0);
                     if let Some(Value::Number(number)) = value {
-                        self.stack.push(Value::Number(-number));
+                        frame.stack_mut().push(Value::Number(-number));
                     } else {
-                        self.runtime_error(chunk, "Operand must be a number");
+                        Self::runtime_error(&mut frame, "Operand must be a number");
                         return InterpretResult::RuntimeError;
                     }
                 }
                 OP_PRINT => {
-                    println!("{}", self.stack.pop());
+                    println!("{}", frame.stack_mut().pop());
                 }
                 OP_JUMP => {
-                    let offset = self.read_short(chunk);
-                    self.ip += offset as usize;
+                    let offset = Self::read_short(&mut frame);
+                    *frame.ip_mut() += offset as usize;
                 }
                 OP_JUMP_IF_FALSE => {
-                    let offset = self.read_short(chunk);
-                    if self.stack.peek(0).unwrap().is_falsey() {
-                        self.ip += offset as usize;
+                    let offset = Self::read_short(&mut frame);
+                    if frame.stack_mut().peek(0).unwrap().is_falsey() {
+                        *frame.ip_mut() += offset as usize;
                     }
                 }
                 OP_LOOP => {
-                    let offset = self.read_short(chunk);
-                    self.ip -= offset as usize;
+                    let offset = Self::read_short(&mut frame);
+                    *frame.ip_mut() -= offset as usize;
                 }
                 OP_RETURN => {
                     // Exit interpreter
@@ -200,68 +270,72 @@ impl VM {
         }
     }
 
-    fn read_byte(&mut self, chunk: &Chunk) -> u8 {
-        let res = chunk[self.ip];
-        self.ip += 1;
+    fn read_byte(frame: &mut CallFrame) -> u8 {
+        let res = frame.chunk()[frame.ip()];
+        *frame.ip_mut() += 1;
         res
     }
 
-    fn read_short(&mut self, chunk: &Chunk) -> u16 {
-        self.ip += 2;
-        (chunk[self.ip - 2] as u16) << 8 | chunk[self.ip - 1] as u16
+    fn read_short(frame: &mut CallFrame) -> u16 {
+        *frame.ip_mut() += 2;
+        (frame.chunk()[frame.ip() - 2] as u16) << 8 | frame.chunk()[frame.ip() - 1] as u16
     }
 
-    fn read_constant(&mut self, chunk: &Chunk) -> Value {
-        let index = self.read_byte(chunk) as usize;
-        chunk.constants()[index].clone()
+    fn read_constant(frame: &mut CallFrame) -> Value {
+        let index = Self::read_byte(frame) as usize;
+        frame.chunk().constants()[index].clone()
     }
 
-    fn runtime_error(&self, chunk: &Chunk, msg: &str) {
+    fn runtime_error(frame: &CallFrame, msg: &str) {
         eprintln!("{msg}");
-        let instruction = self.ip - 1;
-        let line = chunk.lines()[instruction];
+        let instruction = frame.ip() - 1;
+        let line = frame.chunk().lines()[instruction];
         eprintln!("[line {line}] in script");
     }
 
-    fn binary_op<R, F>(&mut self, chunk: &Chunk, f: F) -> bool
+    fn binary_op<R, F>(frame: &mut CallFrame, f: F) -> bool
     where
         R: ValueContent,
         F: Fn(f64, f64) -> R,
     {
-        if let Some(Value::Number(right)) = self.stack.peek(0) {
-            if let Some(Value::Number(left)) = self.stack.peek(1) {
-                self.stack.pop();
-                self.stack.pop();
-                self.stack.push(ValueContent::to_value(f(left, right)));
+        if let Some(Value::Number(right)) = frame.stack_mut().peek(0) {
+            if let Some(Value::Number(left)) = frame.stack_mut().peek(1) {
+                frame.stack_mut().pop();
+                frame.stack_mut().pop();
+                frame
+                    .stack_mut()
+                    .push(ValueContent::to_value(f(left, right)));
                 return true;
             }
         }
-        self.runtime_error(chunk, "Operands must be numbers");
+        Self::runtime_error(frame, "Operands must be numbers");
         false
     }
 
-    fn binary_op_num<F>(&mut self, chunk: &Chunk, f: F) -> bool
+    fn binary_op_num<F>(frame: &mut CallFrame, f: F) -> bool
     where
         F: Fn(f64, f64) -> f64,
     {
-        self.binary_op(chunk, f)
+        Self::binary_op(frame, f)
     }
 
-    fn binary_op_bool<F>(&mut self, chunk: &Chunk, f: F) -> bool
+    fn binary_op_bool<F>(frame: &mut CallFrame, f: F) -> bool
     where
         F: Fn(&f64, &f64) -> bool,
     {
-        self.binary_op(chunk, |a, b| f(&a, &b))
+        Self::binary_op(frame, |a, b| f(&a, &b))
     }
 
-    fn concatenate(&mut self) {
-        let b = self.stack.pop();
-        let a = self.stack.pop();
-        self.stack.push(Value::from_obj(ObjString::concatenate(
-            &mut self.strings,
-            &a.as_string(),
-            &b.as_string(),
-        )));
+    fn concatenate(intern: &mut impl Intern, frame: &mut CallFrame) {
+        let b = frame.stack_mut().pop();
+        let a = frame.stack_mut().pop();
+        frame
+            .stack_mut()
+            .push(Value::from_obj(ObjString::concatenate(
+                intern,
+                &a.as_string(),
+                &b.as_string(),
+            )));
     }
 }
 
@@ -324,5 +398,17 @@ impl<const MAX_SIZE: usize> Display for ValueStack<MAX_SIZE> {
             write!(f, "[ {value} ]")?;
         }
         Ok(())
+    }
+}
+
+#[derive(Debug)]
+struct ValueSlice<'a, const MAX_SIZE: usize> {
+    stack: &'a mut ValueStack<MAX_SIZE>,
+    offset: usize,
+}
+
+impl<'a, const MAX_SIZE: usize> ValueSlice<'a, MAX_SIZE> {
+    fn new(stack: &'a mut ValueStack<MAX_SIZE>, offset: usize) -> Self {
+        Self { stack, offset }
     }
 }
