@@ -403,19 +403,33 @@ impl<'s, 'a: 's> Parser<'s, 'a> {
     }
 
     fn function(&mut self, kind: FunctionType) {
-        let mut compiler = Box::new(Compiler::new(kind, None));
+        let mut compiler = Box::new(Compiler::new(kind));
+        compiler.function.name = Some(ObjString::from_u8(self.intern, self.previous.unwrap().span));
         mem::swap(&mut self.compiler, &mut compiler);
         self.compiler.enclosing = Some(compiler);
 
         self.begin_scope();
         self.consume(TokenType::LeftParen, "Expect '(' after function name");
+        if !self.check(TokenType::Comma) {
+            loop {
+                self.compiler.function.arity += 1;
+                if self.compiler.function.arity > 255 {
+                    self.error_at_current("Cannot have more than 255 parameters");
+                    let constant = self.parse_variable("Expect parameter name");
+                    self.define_variable(constant);
+                }
+                if !self.match_token(TokenType::Comma) {
+                    break;
+                }
+            }
+        }
         self.consume(TokenType::RightParen, "Expect ')' after parameters");
         self.consume(TokenType::LeftBrace, "Expect '{' before function body");
         self.block();
 
         let function = self.end_compiler();
-        let function = self.make_constant(Value::from_obj(Rc::<ObjFunction>::from(function)));
-        self.emit_bytes(OP_CONSTANT, function);
+        let constant = self.make_constant(Value::from_obj(Rc::<ObjFunction>::from(function)));
+        self.emit_bytes(OP_CONSTANT, constant);
     }
 
     fn fun_declaration(&mut self) {
@@ -644,7 +658,7 @@ fn get_rule<'a, 'c, 'd>(token_type: TokenType) -> ParseRule<'a, 'c, 'd> {
 
 pub fn compile(source: &str, intern: &mut dyn Intern) -> Option<Box<ObjFunction>> {
     let mut scanner = Scanner::new(source.as_bytes());
-    let mut compiler = Box::new(Compiler::new(FunctionType::Script, None));
+    let compiler = Box::new(Compiler::new(FunctionType::Script));
     let mut parser = Parser::new(&mut scanner, compiler, intern);
     parser.advance();
     while !parser.match_token(TokenType::Eof) {
@@ -733,9 +747,9 @@ struct Compiler<'l> {
 }
 
 impl<'l> Compiler<'l> {
-    fn new(function_type: FunctionType, enclosing: Option<Box<Compiler<'l>>>) -> Self {
+    fn new(function_type: FunctionType) -> Self {
         Self {
-            enclosing,
+            enclosing: None,
             function: Box::new(ObjFunction::new()),
             function_type,
             locals: vec![Local::new(
