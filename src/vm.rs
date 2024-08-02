@@ -312,9 +312,17 @@ impl VM {
 
     fn runtime_error(frame: &mut CallFrame, msg: &str) {
         eprintln!("{msg}");
-        let instruction = frame.ip() - 1;
-        let line = frame.chunk().lines()[instruction];
-        eprintln!("[line {line}] in script");
+        for frame in frame.frames.0.iter().rev() {
+            let function = frame.function.clone();
+            let instruction = frame.ip - 1;
+            let line = function.chunk.lines()[instruction];
+            let function_name = match &function.name {
+                Some(name) => format!("{name}()"),
+                None => "script".to_owned(),
+            };
+            eprintln!("[line {line}] in {function_name}");
+        }
+
         frame.slots.stack.reset();
     }
 
