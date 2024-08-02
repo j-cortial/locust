@@ -380,6 +380,14 @@ impl VM {
     }
 
     fn call(frame: CallFrame, function: Rc<ObjFunction>, arg_count: u8) -> bool {
+        if arg_count as u32 != function.arity {
+            Self::runtime_error(&frame, &format!("Expected {} arguments but got {}", function.arity, arg_count));
+            return false;
+        }
+        if frame.frames.0.len() == FRAME_MAX {
+            Self::runtime_error(&frame, "Stack overflow");
+            return false;
+        }
         let value_offset = frame.slots.stack.count - arg_count as usize - 1;
         let (frames, _values) = frame.release();
         let frame_info = CallFrameInfo::new(function, value_offset);
