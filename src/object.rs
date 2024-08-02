@@ -7,10 +7,12 @@ use downcast_rs::impl_downcast;
 use downcast_rs::Downcast;
 
 use crate::chunk::Chunk;
+use crate::value::Value;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ObjType {
     Function,
+    Native,
     String,
 }
 
@@ -24,6 +26,10 @@ pub trait Obj: Debug + Downcast {
     fn as_obj_function(&self) -> Option<&ObjFunction> {
         None
     }
+
+    fn as_obj_native(&self) -> Option<&ObjNative> {
+        None
+    }
 }
 
 impl_downcast!(Obj);
@@ -33,6 +39,7 @@ impl Display for dyn Obj {
         match self.kind() {
             ObjType::String => write!(f, "{}", self.as_obj_string().unwrap()),
             ObjType::Function => write!(f, "{}", self.as_obj_function().unwrap()),
+            ObjType::Native => write!(f, "<native fn>"),
         }
     }
 }
@@ -70,6 +77,33 @@ impl Display for ObjFunction {
             Some(n) => write!(f, "fn <{}>", n),
             None => write!(f, "<script>"),
         }
+    }
+}
+
+pub type NativeFn = fn(arg_count: i32, args: &[Value]) -> Value;
+
+#[derive(Debug)]
+pub struct ObjNative {
+    function: NativeFn,
+}
+
+impl Obj for ObjNative {
+    fn kind(&self) -> ObjType {
+        ObjType::Native
+    }
+
+    fn as_obj_native(&self) -> Option<&ObjNative> {
+        Some(self)
+    }
+}
+
+impl ObjNative {
+    pub fn new(function: NativeFn) -> Self {
+        Self { function }
+    }
+
+    pub fn native_ptr(&self) -> NativeFn {
+        self.function
     }
 }
 

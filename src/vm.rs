@@ -1,7 +1,8 @@
 use std::{
     array::from_fn,
+    ffi::c_long,
     fmt::Display,
-    ops::{Div, Index, IndexMut, Mul, Sub},
+    ops::{Div, Index, IndexMut, Mul, RangeFrom, Sub},
     rc::Rc,
 };
 
@@ -14,7 +15,7 @@ use crate::{
     },
     compiler::compile,
     debug::disassemble_instruction,
-    object::{Intern, Obj, ObjFunction, ObjString, ObjType},
+    object::{Intern, NativeFn, Obj, ObjFunction, ObjNative, ObjString, ObjType},
     table::Table,
     value::ValueContent,
 };
@@ -116,12 +117,21 @@ pub enum InterpretResult {
 
 impl VM {
     pub fn new() -> Self {
-        Self {
+        let mut res = Self {
             frames: Default::default(),
             stack: Default::default(),
             globals: Default::default(),
             strings: Default::default(),
-        }
+        };
+        let mut stack = ValueSlice::new(&mut res.stack, 0);
+        Self::define_native(
+            &mut res.globals,
+            &mut res.strings,
+            &mut stack,
+            b"clock",
+            clock_native,
+        );
+        res
     }
 
     pub fn interpret(&mut self, source: &str) -> InterpretResult {
@@ -335,6 +345,24 @@ impl VM {
         frame.slots.stack.reset();
     }
 
+    fn define_native<'s>(
+        globals: &mut Table,
+        intern: &mut impl Intern,
+        stack: &mut ValueSlice<'s, STACK_MAX>,
+        name: &[u8],
+        function: NativeFn,
+    ) {
+        let name = ObjString::from_u8(intern, name);
+        stack.push(Value::from_obj(name));
+        stack.push(Value::from_obj(Rc::new(ObjNative::new(function))));
+        let key = stack.peek(1).unwrap();
+        let key = key.as_string_rc();
+        let value = stack.peek(0).unwrap();
+        globals.set(key, value);
+        stack.pop();
+        stack.pop();
+    }
+
     fn binary_op<R, F>(frame: &mut CallFrame, f: F) -> bool
     where
         R: ValueContent,
@@ -390,7 +418,16 @@ impl VM {
                         arg_count,
                     );
                 }
-                _ => {}
+                ObjType::Native => {
+                    let native = Rc::downcast::<ObjNative>(callee).unwrap();
+                    let native = native.native_ptr();
+                    let bottom = frame.stack().count() - arg_count as usize;
+                    let result = native(arg_count as i32, &frame.stack()[bottom..]);
+                    frame.slots.stack.count -= arg_count as usize + 1;
+                    frame.stack_mut().push(result);
+                    return true;
+                }
+                _ => todo!(),
             }
         }
         Self::runtime_error(&mut frame, "Can only call functions and classes");
@@ -418,6 +455,18 @@ impl VM {
         frames.0.push(frame_info);
         true
     }
+}
+
+#[link(name = "c")]
+extern "C" {
+    fn clock() -> c_long;
+}
+
+const CLOCKS_PER_SEC: c_long = 1_000_000;
+
+fn clock_native(_arg_count: i32, _args: &[Value]) -> Value {
+    let result = unsafe { clock() } as f64 / CLOCKS_PER_SEC as f64;
+    return Value::from_number(result);
 }
 
 #[derive(Debug)]
@@ -470,6 +519,14 @@ impl<const MAX_SIZE: usize> Index<usize> for ValueStack<MAX_SIZE> {
 impl<const MAX_SIZE: usize> IndexMut<usize> for ValueStack<MAX_SIZE> {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         &mut self.values[index]
+    }
+}
+
+impl<const MAX_SIZE: usize> Index<RangeFrom<usize>> for ValueStack<MAX_SIZE> {
+    type Output = [Value];
+
+    fn index(&self, index: RangeFrom<usize>) -> &Self::Output {
+        &self.values[index]
     }
 }
 
@@ -537,6 +594,14 @@ impl<'a, const MAX_SIZE: usize> Index<usize> for ValueSlice<'a, MAX_SIZE> {
 impl<'a, const MAX_SIZE: usize> IndexMut<usize> for ValueSlice<'a, MAX_SIZE> {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         &mut self.values_mut()[index]
+    }
+}
+
+impl<'a, const MAX_SIZE: usize> Index<RangeFrom<usize>> for ValueSlice<'a, MAX_SIZE> {
+    type Output = [Value];
+
+    fn index(&self, index: RangeFrom<usize>) -> &Self::Output {
+        &self.values()[index]
     }
 }
 
