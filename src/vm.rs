@@ -381,7 +381,13 @@ impl VM {
 
     fn call(frame: CallFrame, function: Rc<ObjFunction>, arg_count: u8) -> bool {
         if arg_count as u32 != function.arity {
-            Self::runtime_error(&frame, &format!("Expected {} arguments but got {}", function.arity, arg_count));
+            Self::runtime_error(
+                &frame,
+                &format!(
+                    "Expected {} arguments but got {}",
+                    function.arity, arg_count
+                ),
+            );
             return false;
         }
         if frame.frames.0.len() == FRAME_MAX {
@@ -483,21 +489,22 @@ impl<'a, const MAX_SIZE: usize> ValueSlice<'a, MAX_SIZE> {
 
     fn peek(&self, distance: usize) -> Option<Value> {
         if self.count() > distance {
-            Some(self.values()[self.count() - (distance + 1)].clone())
+            self.stack.peek(distance)
         } else {
             None
         }
     }
 
     fn push(&mut self, value: Value) {
-        let count = self.count();
-        self.values_mut()[count] = value;
-        self.stack.count += 1;
+        self.stack.push(value);
     }
 
     fn pop(&mut self) -> Value {
-        self.stack.count -= 1;
-        self.values()[self.count()].clone()
+        if self.count() > 0 {
+            self.stack.pop()
+        } else {
+            panic!()
+        }
     }
 }
 
