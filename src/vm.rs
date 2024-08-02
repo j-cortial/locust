@@ -310,11 +310,12 @@ impl VM {
         frame.chunk().constants()[index].clone()
     }
 
-    fn runtime_error(frame: &CallFrame, msg: &str) {
+    fn runtime_error(frame: &mut CallFrame, msg: &str) {
         eprintln!("{msg}");
         let instruction = frame.ip() - 1;
         let line = frame.chunk().lines()[instruction];
         eprintln!("[line {line}] in script");
+        frame.slots.stack.reset();
     }
 
     fn binary_op<R, F>(frame: &mut CallFrame, f: F) -> bool
@@ -362,7 +363,7 @@ impl VM {
             )));
     }
 
-    fn call_value(frame: CallFrame, callee: Value, arg_count: u8) -> bool {
+    fn call_value(mut frame: CallFrame, callee: Value, arg_count: u8) -> bool {
         if let Value::Obj(callee) = callee {
             match callee.kind() {
                 ObjType::Function => {
@@ -375,14 +376,14 @@ impl VM {
                 _ => {}
             }
         }
-        Self::runtime_error(&frame, "Can only call functions and classes");
+        Self::runtime_error(&mut frame, "Can only call functions and classes");
         false
     }
 
-    fn call(frame: CallFrame, function: Rc<ObjFunction>, arg_count: u8) -> bool {
+    fn call(mut frame: CallFrame, function: Rc<ObjFunction>, arg_count: u8) -> bool {
         if arg_count as u32 != function.arity {
             Self::runtime_error(
-                &frame,
+                &mut frame,
                 &format!(
                     "Expected {} arguments but got {}",
                     function.arity, arg_count
@@ -391,7 +392,7 @@ impl VM {
             return false;
         }
         if frame.frames.0.len() == FRAME_MAX {
-            Self::runtime_error(&frame, "Stack overflow");
+            Self::runtime_error(&mut frame, "Stack overflow");
             return false;
         }
         let value_offset = frame.slots.stack.count - arg_count as usize - 1;
