@@ -138,7 +138,7 @@ impl<'s, 'a: 's> Parser<'s, 'a> {
     }
 
     fn emit_return(&mut self) {
-        self.emit_byte(OP_RETURN);
+        self.emit_bytes(OP_NIL, OP_RETURN);
     }
 
     fn make_constant(&mut self, value: Value) -> u8 {
@@ -560,6 +560,19 @@ impl<'s, 'a: 's> Parser<'s, 'a> {
         self.emit_byte(OP_PRINT);
     }
 
+    fn return_statement(&mut self) {
+        if self.compiler.function_type == FunctionType::Script {
+            self.error("Cannot return from top-level code");
+        }
+        if self.match_token(TokenType::SemiColon) {
+            self.emit_return();
+        } else {
+            self.expression();
+            self.consume(TokenType::SemiColon, "Expect ';' after return value");
+            self.emit_byte(OP_RETURN);
+        }
+    }
+
     fn while_statement(&mut self) {
         self.consume(TokenType::LeftParen, "Expect '(' after 'while'");
         self.expression();
@@ -624,6 +637,8 @@ impl<'s, 'a: 's> Parser<'s, 'a> {
             self.for_statement();
         } else if self.match_token(TokenType::If) {
             self.if_statement();
+        } else if self.match_token(TokenType::Return) {
+            self.return_statement();
         } else if self.match_token(TokenType::While) {
             self.while_statement();
         } else if self.match_token(TokenType::LeftBrace) {

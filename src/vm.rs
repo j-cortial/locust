@@ -133,7 +133,7 @@ impl VM {
         };
         let function: Rc<ObjFunction> = script.into();
         let object: Rc<dyn Obj> = function.clone();
-        self.stack.reset();
+        assert_eq!(self.stack.count, 0);
         self.stack.push(Value::from_obj(object));
         let script = CallFrameInfo::new(function, 0);
         self.frames.0.push(script);
@@ -286,8 +286,17 @@ impl VM {
                     frame = self.frames.active_frame(&mut self.stack);
                 }
                 OP_RETURN => {
-                    // Exit interpreter
-                    return InterpretResult::Ok;
+                    let result = frame.stack_mut().pop();
+                    let return_stack_count = frame.info().value_offset;
+                    drop(frame);
+                    self.frames.0.pop();
+                    if self.frames.0.is_empty() {
+                        self.stack.pop();
+                        return InterpretResult::Ok;
+                    }
+                    self.stack.count = return_stack_count;
+                    self.stack.push(result);
+                    frame = self.frames.active_frame(&mut self.stack);
                 }
                 _ => {}
             }
