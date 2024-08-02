@@ -14,7 +14,7 @@ use crate::{
     },
     compiler::compile,
     debug::disassemble_instruction,
-    object::{Intern, ObjFunction, ObjString, ObjType},
+    object::{Intern, Obj, ObjFunction, ObjString, ObjType},
     table::Table,
     value::ValueContent,
 };
@@ -131,7 +131,11 @@ impl VM {
                 return InterpretResult::CompileError;
             }
         };
-        let script = CallFrameInfo::new(script.into(), 0);
+        let function: Rc<ObjFunction> = script.into();
+        let object: Rc<dyn Obj> = function.clone();
+        self.stack.reset();
+        self.stack.push(Value::from_obj(object));
+        let script = CallFrameInfo::new(function, 0);
         self.frames.0.push(script);
         self.run()
     }
@@ -168,10 +172,10 @@ impl VM {
                 OP_GET_GLOBAL => {
                     let constant = Self::read_constant(&mut frame);
                     let name = constant.as_string_rc();
-                    if let Some(value) = self.globals.get(name) {
+                    if let Some(value) = self.globals.get(name.clone()) {
                         frame.stack_mut().push(value.clone());
                     } else {
-                        Self::runtime_error(&mut frame, "Undefined variable {&*name}");
+                        Self::runtime_error(&mut frame, &format!("Undefined variable {}", *name));
                         return InterpretResult::RuntimeError;
                     }
                 }
@@ -189,8 +193,8 @@ impl VM {
                         .set(name.clone(), frame.stack_mut().peek(0).unwrap())
                         .is_none()
                     {
-                        self.globals.delete(name);
-                        Self::runtime_error(&mut frame, "Undefined variable {&*name}");
+                        self.globals.delete(name.clone());
+                        Self::runtime_error(&mut frame, &format!("Undefined variable {}", *name));
                         return InterpretResult::RuntimeError;
                     }
                 }

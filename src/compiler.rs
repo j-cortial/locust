@@ -427,7 +427,10 @@ impl<'s, 'a: 's> Parser<'s, 'a> {
 
     fn function(&mut self, kind: FunctionType) {
         let mut compiler = Box::new(Compiler::new(kind));
-        compiler.function.name = Some(ObjString::from_u8(self.intern, self.previous.unwrap().span));
+        if kind != FunctionType::Script {
+            compiler.function.name =
+                Some(ObjString::from_u8(self.intern, self.previous.unwrap().span));
+        }
         mem::swap(&mut self.compiler, &mut compiler);
         self.compiler.enclosing = Some(compiler);
 
