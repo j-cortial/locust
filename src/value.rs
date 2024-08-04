@@ -104,6 +104,10 @@ impl Value {
     }
 
     pub fn as_string(&self) -> &ObjString {
+        self.as_concrete::<ObjString>()
+    }
+
+    pub fn as_concrete<T: Obj>(&self) -> &T {
         self.as_obj().downcast_ref().unwrap()
     }
 
@@ -115,6 +119,10 @@ impl Value {
     }
 
     pub fn as_string_rc(&self) -> Rc<ObjString> {
+        self.as_concrete_rc::<ObjString>()
+    }
+
+    pub fn as_concrete_rc<T : Obj>(&self) -> Rc<T> {
         Rc::downcast(self.as_any_rc()).unwrap()
     }
 }

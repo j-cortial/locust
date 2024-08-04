@@ -1,4 +1,6 @@
-use crate::chunk;
+use std::rc::Rc;
+
+use crate::{chunk, object::ObjFunction};
 use chunk::*;
 
 pub fn disassemble(chunk: &Chunk, name: &str) {
@@ -29,6 +31,8 @@ pub fn disassemble_instruction(chunk: &Chunk, offset: usize) -> usize {
         OP_GET_GLOBAL => constant_instruction("OP_GET_GLOBAL", chunk, offset),
         OP_DEFINE_GLOBAL => constant_instruction("OP_DEFINE_GLOBAL", chunk, offset),
         OP_SET_GLOBAL => constant_instruction("OP_SET_GLOBAL", chunk, offset),
+        OP_GET_UPVALUE => byte_instruction("OP_GET_UPVALUE", chunk, offset),
+        OP_SET_UPVALUE => byte_instruction("OP_SET_UPVALUE", chunk, offset),
         OP_EQUAL => simple_instruction("OP_EQUAL", offset),
         OP_GREATER => simple_instruction("OP_GREATER", offset),
         OP_LESS => simple_instruction("OP_LESS", offset),
@@ -43,6 +47,24 @@ pub fn disassemble_instruction(chunk: &Chunk, offset: usize) -> usize {
         OP_JUMP_IF_FALSE => jump_instruction("OP_JUMP_IF_FALSE", 1, chunk, offset),
         OP_LOOP => jump_instruction("OP_LOOP", -1, chunk, offset),
         OP_CALL => byte_instruction("OP_CALL", chunk, offset),
+        OP_CLOSURE => {
+            let mut current_offset = offset + 1;
+            let constant = chunk[current_offset];
+            current_offset += 1;
+            let value = chunk.constants()[constant as usize].clone();
+            println!("{:16} {constant:4} {}", "OP_CLOSURE", value);
+            let function: Rc<ObjFunction> = value.as_concrete_rc();
+            for _ in 0..function.upvalue_count {
+                let is_local = chunk[current_offset];
+                current_offset += 1;
+                let index = chunk[current_offset];
+                current_offset += 1;
+                let offset = current_offset - 2;
+                let name = if is_local != 0 { "local" } else { "upvalue" };
+                println!("{offset:04}      |                     {} {}", name, index);
+            }
+            current_offset
+        }
         OP_RETURN => simple_instruction("OP_RETURN", offset),
         _ => {
             println!("Unknown opcode {instruction}");
@@ -72,7 +94,11 @@ fn byte_instruction(name: &str, chunk: &Chunk, offset: usize) -> usize {
 fn jump_instruction(name: &str, sign: i32, chunk: &Chunk, offset: usize) -> usize {
     let mut jump = (chunk[offset + 1] as u16) << 8;
     jump |= chunk[offset + 2] as u16;
-    let to = if sign < 0 { (offset + 3) - jump as usize} else { offset + 3 + jump as usize };
+    let to = if sign < 0 {
+        (offset + 3) - jump as usize
+    } else {
+        offset + 3 + jump as usize
+    };
     println!("{name:16} {offset:4} -> {to}");
     offset + 3
 }

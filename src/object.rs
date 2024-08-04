@@ -11,6 +11,7 @@ use crate::value::Value;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ObjType {
+    Closure,
     Function,
     Native,
     String,
@@ -30,6 +31,10 @@ pub trait Obj: Debug + Downcast {
     fn as_obj_native(&self) -> Option<&ObjNative> {
         None
     }
+
+    fn as_obj_closure(&self) -> Option<&ObjClosure> {
+        None
+    }
 }
 
 impl_downcast!(Obj);
@@ -40,13 +45,15 @@ impl Display for dyn Obj {
             ObjType::String => write!(f, "{}", self.as_obj_string().unwrap()),
             ObjType::Function => write!(f, "{}", self.as_obj_function().unwrap()),
             ObjType::Native => write!(f, "<native fn>"),
+            ObjType::Closure => write!(f, "{}", self.as_obj_closure().unwrap().function),
         }
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct ObjFunction {
     pub arity: u32,
+    pub upvalue_count: u32,
     pub chunk: Chunk,
     pub name: Option<Rc<ObjString>>,
 }
@@ -63,11 +70,7 @@ impl Obj for ObjFunction {
 
 impl ObjFunction {
     pub fn new() -> Self {
-        ObjFunction {
-            arity: 0,
-            chunk: Default::default(),
-            name: None,
-        }
+        ObjFunction::default()
     }
 }
 
@@ -107,7 +110,7 @@ impl ObjNative {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, PartialEq, Eq, Hash)]
 pub struct ObjString {
     pub content: String,
 }
@@ -144,4 +147,25 @@ impl Display for ObjString {
 
 pub trait Intern {
     fn intern(&mut self, new_instance: ObjString) -> Rc<ObjString>;
+}
+
+#[derive(Debug)]
+pub struct ObjClosure {
+    pub function: Rc<ObjFunction>,
+}
+
+impl ObjClosure {
+    pub fn new(function: Rc<ObjFunction>) -> Self {
+        Self { function }
+    }
+}
+
+impl Obj for ObjClosure {
+    fn kind(&self) -> ObjType {
+        ObjType::Closure
+    }
+
+    fn as_obj_closure(&self) -> Option<&ObjClosure> {
+        Some(&self)
+    }
 }

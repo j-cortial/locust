@@ -3,10 +3,10 @@ use num_traits::{FromPrimitive, ToPrimitive};
 
 use crate::{
     chunk::{
-        OP_ADD, OP_CALL, OP_CONSTANT, OP_DEFINE_GLOBAL, OP_DIVIDE, OP_EQUAL, OP_FALSE,
-        OP_GET_GLOBAL, OP_GET_LOCAL, OP_GREATER, OP_JUMP, OP_JUMP_IF_FALSE, OP_LESS, OP_LOOP,
-        OP_MULTIPLY, OP_NEGATE, OP_NIL, OP_NOT, OP_POP, OP_PRINT, OP_RETURN, OP_SET_GLOBAL,
-        OP_SET_LOCAL, OP_SUBTRACT, OP_TRUE,
+        OP_ADD, OP_CALL, OP_CLOSURE, OP_CONSTANT, OP_DEFINE_GLOBAL, OP_DIVIDE, OP_EQUAL, OP_FALSE,
+        OP_GET_GLOBAL, OP_GET_LOCAL, OP_GET_UPVALUE, OP_GREATER, OP_JUMP, OP_JUMP_IF_FALSE,
+        OP_LESS, OP_LOOP, OP_MULTIPLY, OP_NEGATE, OP_NIL, OP_NOT, OP_POP, OP_PRINT, OP_RETURN,
+        OP_SET_GLOBAL, OP_SET_LOCAL, OP_SET_UPVALUE, OP_SUBTRACT, OP_TRUE,
     },
     debug::disassemble,
     object::{Intern, ObjFunction, ObjString},
@@ -172,7 +172,7 @@ impl<'s, 'a: 's> Parser<'s, 'a> {
         current_chunk[offset + 1] = (jump & 0xff) as u8;
     }
 
-    fn end_compiler(&mut self) -> Box<ObjFunction> {
+    fn end_compiler(&mut self) -> (Box<ObjFunction>, Vec<Upvalue>) {
         self.emit_return();
 
         let mut function = Box::new(ObjFunction::new());
@@ -190,11 +190,14 @@ impl<'s, 'a: 's> Parser<'s, 'a> {
             }
         }
 
+        let mut upvalues = vec![];
+        mem::swap(&mut self.compiler.upvalues, &mut upvalues);
+
         if let Some(enclosing_compiler) = self.compiler.enclosing.take() {
             self.compiler = enclosing_compiler;
         }
 
-        function
+        (function, upvalues)
     }
 
     fn begin_scope(&mut self) {
@@ -276,19 +279,27 @@ impl<'s, 'a: 's> Parser<'s, 'a> {
         self.emit_constant(Value::from_obj(obj_string));
     }
 
-    fn named_variable(&mut self, name: Token, can_assign: bool) {
-        let (arg, ok) = self.compiler.resolve_local(&name);
-        if !ok {
-            self.error("Cannot read local variable in its own initializer");
+    fn named_variable(&mut self, name: Token<'s>, can_assign: bool) {
+        let (arg, error) = self.compiler.resolve_local(&name);
+        if let Some(error) = error {
+            self.error(error);
         }
         let (get_op, set_op, arg) = if arg != -1 {
             (OP_GET_LOCAL, OP_SET_LOCAL, arg)
         } else {
-            (
-                OP_GET_GLOBAL,
-                OP_SET_GLOBAL,
-                self.identifier_constant(&name) as Depth,
-            )
+            let (arg, ok) = self.compiler.resolve_upvalue(&name);
+            if let Some(error) = error {
+                self.error(error);
+            }
+            if arg != -1 {
+                (OP_GET_UPVALUE, OP_SET_UPVALUE, arg)
+            } else {
+                (
+                    OP_GET_GLOBAL,
+                    OP_SET_GLOBAL,
+                    self.identifier_constant(&name) as Depth,
+                )
+            }
         };
         if can_assign && self.match_token(TokenType::Equal) {
             self.expression();
@@ -453,9 +464,17 @@ impl<'s, 'a: 's> Parser<'s, 'a> {
         self.consume(TokenType::LeftBrace, "Expect '{' before function body");
         self.block();
 
-        let function = self.end_compiler();
+        let (function, upvalues) = self.end_compiler();
+        let upvalue_count = function.upvalue_count;
+        assert_eq!(upvalues.len(), upvalue_count as usize);
         let constant = self.make_constant(Value::from_obj(Rc::<ObjFunction>::from(function)));
-        self.emit_bytes(OP_CONSTANT, constant);
+        self.emit_bytes(OP_CLOSURE, constant);
+
+        for upvalue in upvalues {
+            let first_byte = if upvalue.is_local { 1 } else { 0 };
+            let second_byte = upvalue.index;
+            self.emit_bytes(first_byte, second_byte);
+        }
     }
 
     fn fun_declaration(&mut self) {
@@ -705,7 +724,7 @@ pub fn compile(source: &str, intern: &mut dyn Intern) -> Option<Box<ObjFunction>
     while !parser.match_token(TokenType::Eof) {
         parser.declaration();
     }
-    let res = parser.end_compiler();
+    let (res, _) = parser.end_compiler();
     if parser.had_error {
         None
     } else {
@@ -770,6 +789,18 @@ impl<'t> Local<'t> {
     }
 }
 
+#[derive(Debug, PartialEq, Eq)]
+struct Upvalue {
+    index: u8,
+    is_local: bool,
+}
+
+impl Upvalue {
+    fn new(index: u8, is_local: bool) -> Self {
+        Self { index, is_local }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum FunctionType {
     Function,
@@ -784,6 +815,7 @@ struct Compiler<'l> {
     function: Box<ObjFunction>,
     function_type: FunctionType,
     locals: Vec<Local<'l>>,
+    upvalues: Vec<Upvalue>,
     scope_depth: Depth,
 }
 
@@ -801,19 +833,59 @@ impl<'l> Compiler<'l> {
                 },
                 0,
             )],
+            upvalues: Default::default(),
             scope_depth: Default::default(),
         }
     }
 
-    fn resolve_local(&self, name: &Token<'l>) -> (Depth, bool) {
+    fn resolve_local(&self, name: &Token<'l>) -> (Depth, Option<&'static str>) {
         self.locals
             .iter()
             .rev()
             .enumerate()
             .find(|&(_, l)| l.name.identifier_equal(name))
-            .map_or((-1, true), |(i, l)| {
-                ((self.locals.len() - i) as i32 - 1, l.depth != -1)
+            .map_or((-1, None), |(i, l)| {
+                (
+                    (self.locals.len() - i) as i32 - 1,
+                    (l.depth == -1).then_some("Cannot read local variable in its own initializer"),
+                )
             })
+    }
+
+    fn add_upvalue(&mut self, index: u8, is_local: bool) -> (Depth, Option<&'static str>) {
+        let candidate = Upvalue::new(index, is_local);
+        let found = self.upvalues.iter().position(|v| v == &candidate);
+        match found {
+            Some(index) => (index as Depth, None),
+            None => {
+                let upvalue_count = self.function.upvalue_count;
+                assert_eq!(self.upvalues.len(), upvalue_count as usize);
+                if upvalue_count == u8::MAX as u32 {
+                    return (0, Some("Too many closure variables in function"));
+                }
+                self.upvalues.push(candidate);
+                self.function.upvalue_count += 1;
+                (upvalue_count as Depth, None)
+            }
+        }
+    }
+
+    fn resolve_upvalue(&mut self, name: &Token<'l>) -> (Depth, Option<&'static str>) {
+        if let Some(ref mut enclosing) = &mut self.enclosing {
+            let (local, error) = enclosing.resolve_local(name);
+            assert!(error.is_none());
+            if local != -1 {
+                return self.add_upvalue(local as u8, true);
+            }
+            let (upvalue, error) = enclosing.resolve_upvalue(name);
+            if let Some(error) = error {
+                return (upvalue, Some(error));
+            }
+            if upvalue != -1 {
+                return self.add_upvalue(upvalue as u8, false);
+            }
+        }
+        (-1, None)
     }
 
     fn mark_initialized(&mut self) {

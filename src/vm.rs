@@ -8,14 +8,14 @@ use std::{
 
 use crate::{
     chunk::{
-        Chunk, OP_ADD, OP_CALL, OP_CONSTANT, OP_DEFINE_GLOBAL, OP_DIVIDE, OP_EQUAL, OP_FALSE,
-        OP_GET_GLOBAL, OP_GET_LOCAL, OP_GREATER, OP_JUMP, OP_JUMP_IF_FALSE, OP_LESS, OP_LOOP,
-        OP_MULTIPLY, OP_NEGATE, OP_NIL, OP_NOT, OP_POP, OP_PRINT, OP_RETURN, OP_SET_GLOBAL,
-        OP_SET_LOCAL, OP_SUBTRACT, OP_TRUE,
+        Chunk, OP_ADD, OP_CALL, OP_CLOSURE, OP_CONSTANT, OP_DEFINE_GLOBAL, OP_DIVIDE, OP_EQUAL,
+        OP_FALSE, OP_GET_GLOBAL, OP_GET_LOCAL, OP_GREATER, OP_JUMP, OP_JUMP_IF_FALSE, OP_LESS,
+        OP_LOOP, OP_MULTIPLY, OP_NEGATE, OP_NIL, OP_NOT, OP_POP, OP_PRINT, OP_RETURN,
+        OP_SET_GLOBAL, OP_SET_LOCAL, OP_SUBTRACT, OP_TRUE,
     },
     compiler::compile,
     debug::disassemble_instruction,
-    object::{Intern, NativeFn, Obj, ObjFunction, ObjNative, ObjString, ObjType},
+    object::{Intern, NativeFn, ObjClosure, ObjFunction, ObjNative, ObjString, ObjType},
     table::Table,
     value::ValueContent,
 };
@@ -28,15 +28,15 @@ const STACK_MAX: usize = FRAME_MAX * u8::MAX as usize;
 
 #[derive(Debug)]
 struct CallFrameInfo {
-    function: Rc<ObjFunction>,
+    closure: Rc<ObjClosure>,
     ip: usize,
     value_offset: usize,
 }
 
 impl CallFrameInfo {
-    fn new(function: Rc<ObjFunction>, value_offset: usize) -> Self {
+    fn new(closure: Rc<ObjClosure>, value_offset: usize) -> Self {
         Self {
-            function,
+            closure,
             ip: 0,
             value_offset: value_offset,
         }
@@ -75,7 +75,7 @@ impl<'f, 'v> CallFrame<'f, 'v> {
     }
 
     fn chunk(&self) -> &Chunk {
-        &self.info().function.chunk
+        &self.info().closure.function.chunk
     }
 
     fn release(self) -> (&'f mut FrameStack, &'v mut ValueStack<STACK_MAX>) {
@@ -142,10 +142,12 @@ impl VM {
             }
         };
         let function: Rc<ObjFunction> = script.into();
-        let object: Rc<dyn Obj> = function.clone();
         assert_eq!(self.stack.count, 0);
-        self.stack.push(Value::from_obj(object));
-        let script = CallFrameInfo::new(function, 0);
+        self.stack.push(Value::from_obj(function.clone()));
+        let closure = Rc::new(ObjClosure::new(function));
+        self.stack.pop();
+        self.stack.push(Value::from_obj(closure.clone()));
+        let script = CallFrameInfo::new(closure, 0);
         self.frames.0.push(script);
         self.run()
     }
@@ -295,6 +297,11 @@ impl VM {
                     }
                     frame = self.frames.active_frame(&mut self.stack);
                 }
+                OP_CLOSURE => {
+                    let function = Self::read_constant(&mut frame).as_concrete_rc();
+                    let closure = Rc::new(ObjClosure::new(function));
+                    frame.stack_mut().push(Value::from_obj(closure));
+                }
                 OP_RETURN => {
                     let result = frame.stack_mut().pop();
                     let return_stack_count = frame.info().value_offset;
@@ -332,7 +339,7 @@ impl VM {
     fn runtime_error(frame: &mut CallFrame, msg: &str) {
         eprintln!("{msg}");
         for frame in frame.frames.0.iter().rev() {
-            let function = frame.function.clone();
+            let function = frame.closure.function.clone();
             let instruction = frame.ip - 1;
             let line = function.chunk.lines()[instruction];
             let function_name = match &function.name {
@@ -411,12 +418,8 @@ impl VM {
     fn call_value(mut frame: CallFrame, callee: Value, arg_count: u8) -> bool {
         if let Value::Obj(callee) = callee {
             match callee.kind() {
-                ObjType::Function => {
-                    return Self::call(
-                        frame,
-                        Rc::downcast::<ObjFunction>(callee).unwrap(),
-                        arg_count,
-                    );
+                ObjType::Closure => {
+                    return Self::call(frame, Rc::downcast(callee).unwrap(), arg_count);
                 }
                 ObjType::Native => {
                     let native = Rc::downcast::<ObjNative>(callee).unwrap();
@@ -434,13 +437,13 @@ impl VM {
         false
     }
 
-    fn call(mut frame: CallFrame, function: Rc<ObjFunction>, arg_count: u8) -> bool {
-        if arg_count as u32 != function.arity {
+    fn call(mut frame: CallFrame, closure: Rc<ObjClosure>, arg_count: u8) -> bool {
+        if arg_count as u32 != closure.function.arity {
             Self::runtime_error(
                 &mut frame,
                 &format!(
                     "Expected {} arguments but got {}",
-                    function.arity, arg_count
+                    closure.function.arity, arg_count
                 ),
             );
             return false;
@@ -451,7 +454,7 @@ impl VM {
         }
         let value_offset = frame.slots.stack.count - arg_count as usize - 1;
         let (frames, _values) = frame.release();
-        let frame_info = CallFrameInfo::new(function, value_offset);
+        let frame_info = CallFrameInfo::new(closure, value_offset);
         frames.0.push(frame_info);
         true
     }
