@@ -1,5 +1,6 @@
 use std::{
     array::from_fn,
+    cell::RefCell,
     ffi::c_long,
     fmt::Display,
     ops::{Div, Index, IndexMut, Mul, RangeFrom, Sub},
@@ -9,13 +10,15 @@ use std::{
 use crate::{
     chunk::{
         Chunk, OP_ADD, OP_CALL, OP_CLOSURE, OP_CONSTANT, OP_DEFINE_GLOBAL, OP_DIVIDE, OP_EQUAL,
-        OP_FALSE, OP_GET_GLOBAL, OP_GET_LOCAL, OP_GREATER, OP_JUMP, OP_JUMP_IF_FALSE, OP_LESS,
-        OP_LOOP, OP_MULTIPLY, OP_NEGATE, OP_NIL, OP_NOT, OP_POP, OP_PRINT, OP_RETURN,
-        OP_SET_GLOBAL, OP_SET_LOCAL, OP_SUBTRACT, OP_TRUE,
+        OP_FALSE, OP_GET_GLOBAL, OP_GET_LOCAL, OP_GET_UPVALUE, OP_GREATER, OP_JUMP,
+        OP_JUMP_IF_FALSE, OP_LESS, OP_LOOP, OP_MULTIPLY, OP_NEGATE, OP_NIL, OP_NOT, OP_POP,
+        OP_PRINT, OP_RETURN, OP_SET_GLOBAL, OP_SET_LOCAL, OP_SET_UPVALUE, OP_SUBTRACT, OP_TRUE,
     },
     compiler::compile,
     debug::disassemble_instruction,
-    object::{Intern, NativeFn, ObjClosure, ObjFunction, ObjNative, ObjString, ObjType},
+    object::{
+        Intern, NativeFn, ObjClosure, ObjFunction, ObjNative, ObjString, ObjType, ObjUpvalue,
+    },
     table::Table,
     value::ValueContent,
 };
@@ -210,6 +213,19 @@ impl VM {
                         return InterpretResult::RuntimeError;
                     }
                 }
+                OP_GET_UPVALUE => {
+                    let slot = Self::read_byte(&mut frame);
+                    let upvalues = frame.info().closure.upvalues.borrow()[slot as usize].clone();
+                    let upvalues = upvalues.borrow();
+                    let location = unsafe { upvalues.location_ref() };
+                    frame.stack_mut().push(location.clone());
+                }
+                OP_SET_UPVALUE => {
+                    let slot = Self::read_byte(&mut frame);
+                    let upvalues = frame.info().closure.upvalues.borrow();
+                    let mut upvalue = upvalues[slot as usize].borrow_mut();
+                    upvalue.location = &mut frame.stack().peek(0).unwrap();
+                }
                 OP_EQUAL => {
                     let b = frame.stack_mut().pop();
                     let a = frame.stack_mut().pop();
@@ -300,7 +316,23 @@ impl VM {
                 OP_CLOSURE => {
                     let function = Self::read_constant(&mut frame).as_concrete_rc();
                     let closure = Rc::new(ObjClosure::new(function));
-                    frame.stack_mut().push(Value::from_obj(closure));
+                    frame.stack_mut().push(Value::from_obj(closure.clone()));
+                    let mut upvalues = closure.upvalues.borrow_mut();
+                    let upvalue_count = closure.function.upvalue_count as usize;
+                    upvalues.reserve(upvalue_count);
+                    for _ in 0..upvalue_count {
+                        let is_local = Self::read_byte(&mut frame);
+                        let index = Self::read_byte(&mut frame);
+                        if is_local != 0 {
+                            upvalues.push(Rc::new(RefCell::new(Self::capture_upvalue(
+                                &mut frame.slots[index as usize],
+                            ))));
+                        } else {
+                            upvalues.push(
+                                frame.info().closure.upvalues.borrow()[index as usize].clone(),
+                            );
+                        }
+                    }
                 }
                 OP_RETURN => {
                     let result = frame.stack_mut().pop();
@@ -435,6 +467,10 @@ impl VM {
         }
         Self::runtime_error(&mut frame, "Can only call functions and classes");
         false
+    }
+
+    fn capture_upvalue(value: &mut Value) -> ObjUpvalue {
+        ObjUpvalue::new(value)
     }
 
     fn call(mut frame: CallFrame, closure: Rc<ObjClosure>, arg_count: u8) -> bool {

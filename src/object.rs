@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::fmt::Debug;
 use std::fmt::Display;
 use std::rc::Rc;
@@ -15,6 +16,7 @@ pub enum ObjType {
     Function,
     Native,
     String,
+    Upvalue,
 }
 
 pub trait Obj: Debug + Downcast {
@@ -46,6 +48,7 @@ impl Display for dyn Obj {
             ObjType::Function => write!(f, "{}", self.as_obj_function().unwrap()),
             ObjType::Native => write!(f, "<native fn>"),
             ObjType::Closure => write!(f, "{}", self.as_obj_closure().unwrap().function),
+            ObjType::Upvalue => write!(f, "upvalue"),
         }
     }
 }
@@ -150,13 +153,37 @@ pub trait Intern {
 }
 
 #[derive(Debug)]
+pub struct ObjUpvalue {
+    pub location: *mut Value,
+}
+
+impl ObjUpvalue {
+    pub fn new(value: &mut Value) -> Self {
+        Self {
+            location: &mut *value,
+        }
+    }
+
+    pub unsafe fn location_ref(&self) -> &Value {
+        &*self.location
+    }
+}
+
+impl Obj for ObjUpvalue {
+    fn kind(&self) -> ObjType {
+        ObjType::Upvalue
+    }
+}
+
+#[derive(Debug)]
 pub struct ObjClosure {
     pub function: Rc<ObjFunction>,
+    pub upvalues: RefCell<Vec<Rc<RefCell<ObjUpvalue>>>>,
 }
 
 impl ObjClosure {
     pub fn new(function: Rc<ObjFunction>) -> Self {
-        Self { function }
+        Self { function, upvalues: Default::default() }
     }
 }
 
