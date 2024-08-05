@@ -1,6 +1,7 @@
 use std::{
     array::from_fn,
     cell::RefCell,
+    collections::BTreeMap,
     ffi::c_long,
     fmt::Display,
     ops::{Div, Index, IndexMut, Mul, RangeFrom, Sub},
@@ -9,15 +10,17 @@ use std::{
 
 use crate::{
     chunk::{
-        Chunk, OP_ADD, OP_CALL, OP_CLOSURE, OP_CONSTANT, OP_DEFINE_GLOBAL, OP_DIVIDE, OP_EQUAL,
-        OP_FALSE, OP_GET_GLOBAL, OP_GET_LOCAL, OP_GET_UPVALUE, OP_GREATER, OP_JUMP,
-        OP_JUMP_IF_FALSE, OP_LESS, OP_LOOP, OP_MULTIPLY, OP_NEGATE, OP_NIL, OP_NOT, OP_POP,
-        OP_PRINT, OP_RETURN, OP_SET_GLOBAL, OP_SET_LOCAL, OP_SET_UPVALUE, OP_SUBTRACT, OP_TRUE,
+        Chunk, OP_ADD, OP_CALL, OP_CLOSE_UPVALUE, OP_CLOSURE, OP_CONSTANT, OP_DEFINE_GLOBAL,
+        OP_DIVIDE, OP_EQUAL, OP_FALSE, OP_GET_GLOBAL, OP_GET_LOCAL, OP_GET_UPVALUE, OP_GREATER,
+        OP_JUMP, OP_JUMP_IF_FALSE, OP_LESS, OP_LOOP, OP_MULTIPLY, OP_NEGATE, OP_NIL, OP_NOT,
+        OP_POP, OP_PRINT, OP_RETURN, OP_SET_GLOBAL, OP_SET_LOCAL, OP_SET_UPVALUE, OP_SUBTRACT,
+        OP_TRUE,
     },
     compiler::compile,
     debug::disassemble_instruction,
     object::{
         Intern, NativeFn, ObjClosure, ObjFunction, ObjNative, ObjString, ObjType, ObjUpvalue,
+        UpvalueLocation,
     },
     table::Table,
     value::ValueContent,
@@ -109,6 +112,7 @@ pub struct VM {
     stack: ValueStack<STACK_MAX>,
     globals: Table,
     strings: Table,
+    open_upvalues: BTreeMap<usize, Rc<RefCell<ObjUpvalue>>>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -125,6 +129,7 @@ impl VM {
             stack: Default::default(),
             globals: Default::default(),
             strings: Default::default(),
+            open_upvalues: Default::default(),
         };
         let mut stack = ValueSlice::new(&mut res.stack, 0);
         Self::define_native(
@@ -216,15 +221,15 @@ impl VM {
                 OP_GET_UPVALUE => {
                     let slot = Self::read_byte(&mut frame);
                     let upvalues = frame.info().closure.upvalues.borrow()[slot as usize].clone();
-                    let upvalues = upvalues.borrow();
-                    let location = unsafe { upvalues.location_ref() };
-                    frame.stack_mut().push(location.clone());
+                    let upvalues = (&*upvalues).borrow();
+                    let value = upvalues.location_ref(&frame.slots.stack.values).clone();
+                    frame.stack_mut().push(value);
                 }
                 OP_SET_UPVALUE => {
                     let slot = Self::read_byte(&mut frame);
                     let upvalues = frame.info().closure.upvalues.borrow();
                     let mut upvalue = upvalues[slot as usize].borrow_mut();
-                    upvalue.location = &mut frame.stack().peek(0).unwrap();
+                    upvalue.location = UpvalueLocation::Open(frame.slots.stack.count - 1);
                 }
                 OP_EQUAL => {
                     let b = frame.stack_mut().pop();
@@ -324,9 +329,11 @@ impl VM {
                         let is_local = Self::read_byte(&mut frame);
                         let index = Self::read_byte(&mut frame);
                         if is_local != 0 {
-                            upvalues.push(Rc::new(RefCell::new(Self::capture_upvalue(
-                                &mut frame.slots[index as usize],
-                            ))));
+                            upvalues.push(Self::capture_upvalue(
+                                &mut self.open_upvalues,
+                                &frame,
+                                index as usize,
+                            ));
                         } else {
                             upvalues.push(
                                 frame.info().closure.upvalues.borrow()[index as usize].clone(),
@@ -334,9 +341,18 @@ impl VM {
                         }
                     }
                 }
+                OP_CLOSE_UPVALUE => {
+                    Self::close_upvalues(
+                        &mut self.open_upvalues,
+                        &frame,
+                        frame.slots.stack.count - 1,
+                    );
+                    frame.stack_mut().pop();
+                }
                 OP_RETURN => {
                     let result = frame.stack_mut().pop();
                     let return_stack_count = frame.info().value_offset;
+                    Self::close_upvalues(&mut self.open_upvalues, &frame, return_stack_count);
                     drop(frame);
                     self.frames.0.pop();
                     if self.frames.0.is_empty() {
@@ -469,8 +485,36 @@ impl VM {
         false
     }
 
-    fn capture_upvalue(value: &mut Value) -> ObjUpvalue {
-        ObjUpvalue::new(value)
+    fn capture_upvalue(
+        open_upvalues: &mut BTreeMap<usize, Rc<RefCell<ObjUpvalue>>>,
+        frame: &CallFrame,
+        index: usize,
+    ) -> Rc<RefCell<ObjUpvalue>> {
+        let base_index = frame.slots.offset + index;
+        match open_upvalues.entry(base_index) {
+            std::collections::btree_map::Entry::Vacant(entry) => {
+                Rc::clone(entry.insert(Rc::new(RefCell::new(ObjUpvalue::new(base_index)))))
+            }
+            std::collections::btree_map::Entry::Occupied(entry) => Rc::clone(entry.get()),
+        }
+    }
+
+    fn close_upvalues(
+        open_upvalues: &mut BTreeMap<usize, Rc<RefCell<ObjUpvalue>>>,
+        frame: &CallFrame,
+        cutoff: usize,
+    ) {
+        let to_close = open_upvalues.split_off(&cutoff);
+        for upvalue in to_close.into_values().rev() {
+            let upvalue_ref = upvalue.borrow();
+            if let UpvalueLocation::Open(index) = upvalue_ref.location {
+                drop(upvalue_ref);
+                let value = frame.slots.stack[index].clone();
+                upvalue.borrow_mut().location = UpvalueLocation::Closed(value);
+            } else {
+                panic!()
+            }
+        }
     }
 
     fn call(mut frame: CallFrame, closure: Rc<ObjClosure>, arg_count: u8) -> bool {

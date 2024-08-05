@@ -153,19 +153,28 @@ pub trait Intern {
 }
 
 #[derive(Debug)]
+pub enum UpvalueLocation {
+    Open(usize),
+    Closed(Value),
+}
+
+#[derive(Debug)]
 pub struct ObjUpvalue {
-    pub location: *mut Value,
+    pub location: UpvalueLocation,
 }
 
 impl ObjUpvalue {
-    pub fn new(value: &mut Value) -> Self {
+    pub fn new(index: usize) -> Self {
         Self {
-            location: &mut *value,
+            location: UpvalueLocation::Open(index),
         }
     }
 
-    pub unsafe fn location_ref(&self) -> &Value {
-        &*self.location
+    pub fn location_ref<'a, 's: 'a>(&'a self, stack: &'s [Value]) -> &'a Value {
+        match &self.location {
+            UpvalueLocation::Open(index) => &stack[*index as usize],
+            UpvalueLocation::Closed(value) => &value,
+        }
     }
 }
 
@@ -183,7 +192,10 @@ pub struct ObjClosure {
 
 impl ObjClosure {
     pub fn new(function: Rc<ObjFunction>) -> Self {
-        Self { function, upvalues: Default::default() }
+        Self {
+            function,
+            upvalues: Default::default(),
+        }
     }
 }
 

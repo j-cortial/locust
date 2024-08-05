@@ -3,10 +3,7 @@ use num_traits::{FromPrimitive, ToPrimitive};
 
 use crate::{
     chunk::{
-        OP_ADD, OP_CALL, OP_CLOSURE, OP_CONSTANT, OP_DEFINE_GLOBAL, OP_DIVIDE, OP_EQUAL, OP_FALSE,
-        OP_GET_GLOBAL, OP_GET_LOCAL, OP_GET_UPVALUE, OP_GREATER, OP_JUMP, OP_JUMP_IF_FALSE,
-        OP_LESS, OP_LOOP, OP_MULTIPLY, OP_NEGATE, OP_NIL, OP_NOT, OP_POP, OP_PRINT, OP_RETURN,
-        OP_SET_GLOBAL, OP_SET_LOCAL, OP_SET_UPVALUE, OP_SUBTRACT, OP_TRUE,
+        OP_ADD, OP_CALL, OP_CLOSE_UPVALUE, OP_CLOSURE, OP_CONSTANT, OP_DEFINE_GLOBAL, OP_DIVIDE, OP_EQUAL, OP_FALSE, OP_GET_GLOBAL, OP_GET_LOCAL, OP_GET_UPVALUE, OP_GREATER, OP_JUMP, OP_JUMP_IF_FALSE, OP_LESS, OP_LOOP, OP_MULTIPLY, OP_NEGATE, OP_NIL, OP_NOT, OP_POP, OP_PRINT, OP_RETURN, OP_SET_GLOBAL, OP_SET_LOCAL, OP_SET_UPVALUE, OP_SUBTRACT, OP_TRUE
     },
     debug::disassemble,
     object::{Intern, ObjFunction, ObjString},
@@ -208,7 +205,11 @@ impl<'s, 'a: 's> Parser<'s, 'a> {
         self.compiler.scope_depth -= 1;
         while let Some(l) = self.compiler.locals.last() {
             if l.depth > self.compiler.scope_depth {
-                self.emit_byte(OP_POP);
+                if self.compiler.locals.last().unwrap().is_captured {
+                    self.emit_byte(OP_CLOSE_UPVALUE);
+                } else {
+                    self.emit_byte(OP_POP);
+                }
                 self.compiler.locals.pop();
             } else {
                 break;
@@ -287,7 +288,7 @@ impl<'s, 'a: 's> Parser<'s, 'a> {
         let (get_op, set_op, arg) = if arg != -1 {
             (OP_GET_LOCAL, OP_SET_LOCAL, arg)
         } else {
-            let (arg, ok) = self.compiler.resolve_upvalue(&name);
+            let (arg, error) = self.compiler.resolve_upvalue(&name);
             if let Some(error) = error {
                 self.error(error);
             }
@@ -360,7 +361,7 @@ impl<'s, 'a: 's> Parser<'s, 'a> {
             self.error("Too many local variables in function");
             return;
         }
-        self.compiler.locals.push(Local::new(*name, -1));
+        self.compiler.locals.push(Local::new(*name, -1, false));
     }
 
     fn declare_variable(&mut self) {
@@ -781,11 +782,16 @@ type Depth = i32;
 struct Local<'t> {
     name: Token<'t>,
     depth: Depth,
+    is_captured: bool,
 }
 
 impl<'t> Local<'t> {
-    fn new(name: Token<'t>, depth: Depth) -> Self {
-        Self { name, depth }
+    fn new(name: Token<'t>, depth: Depth, is_captured: bool) -> Self {
+        Self {
+            name,
+            depth,
+            is_captured,
+        }
     }
 }
 
@@ -832,6 +838,7 @@ impl<'l> Compiler<'l> {
                     line: 0,
                 },
                 0,
+                false,
             )],
             upvalues: Default::default(),
             scope_depth: Default::default(),
@@ -875,6 +882,7 @@ impl<'l> Compiler<'l> {
             let (local, error) = enclosing.resolve_local(name);
             assert!(error.is_none());
             if local != -1 {
+                self.enclosing.as_mut().unwrap().locals[local as usize].is_captured = true;
                 return self.add_upvalue(local as u8, true);
             }
             let (upvalue, error) = enclosing.resolve_upvalue(name);

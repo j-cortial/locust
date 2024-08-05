@@ -31,6 +31,7 @@ pub enum OpCode {
     OpLoop,
     OpCall,
     OpClosure,
+    OpCloseUpvalue,
     OpReturn,
 }
 
@@ -61,6 +62,7 @@ pub const OP_JUMP_IF_FALSE: u8 = OpCode::OpJumpIfFalse as u8;
 pub const OP_LOOP: u8 = OpCode::OpLoop as u8;
 pub const OP_CALL: u8 = OpCode::OpCall as u8;
 pub const OP_CLOSURE: u8 = OpCode::OpClosure as u8;
+pub const OP_CLOSE_UPVALUE: u8 = OpCode::OpCloseUpvalue as u8;
 pub const OP_RETURN: u8 = OpCode::OpReturn as u8;
 
 #[derive(Debug, Default, Clone)]

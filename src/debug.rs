@@ -65,6 +65,7 @@ pub fn disassemble_instruction(chunk: &Chunk, offset: usize) -> usize {
             }
             current_offset
         }
+        OP_CLOSE_UPVALUE => simple_instruction("OP_CLOSE_UPVALUE", offset),
         OP_RETURN => simple_instruction("OP_RETURN", offset),
         _ => {
             println!("Unknown opcode {instruction}");
