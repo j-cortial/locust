@@ -227,9 +227,10 @@ impl VM {
                 }
                 OP_SET_UPVALUE => {
                     let slot = Self::read_byte(&mut frame);
-                    let upvalues = frame.info().closure.upvalues.borrow();
+                    let upvalues = frame.frames.0.last().unwrap().closure.upvalues.borrow_mut();
                     let mut upvalue = upvalues[slot as usize].borrow_mut();
-                    upvalue.location = UpvalueLocation::Open(frame.slots.stack.count - 1);
+                    let value = frame.stack().peek(0).unwrap();
+                    *upvalue.location_mut(&mut frame.slots.stack.values) = value;
                 }
                 OP_EQUAL => {
                     let b = frame.stack_mut().pop();

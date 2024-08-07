@@ -176,6 +176,13 @@ impl ObjUpvalue {
             UpvalueLocation::Closed(value) => &value,
         }
     }
+
+    pub fn location_mut<'a, 's: 'a>(&'a mut self, stack: &'s mut [Value]) -> &'a mut Value {
+        match &mut self.location {
+            UpvalueLocation::Open(index) => &mut stack[*index as usize],
+            UpvalueLocation::Closed(ref mut value) => value,
+        }
+    }
 }
 
 impl Obj for ObjUpvalue {
