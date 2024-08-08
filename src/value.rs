@@ -1,17 +1,14 @@
-use std::any::Any;
 use std::ops::Deref;
 use std::{fmt::Display, rc::Rc};
 
-extern crate downcast_rs;
-
-use crate::object::{Obj, ObjString, ObjType};
+use crate::object::{Obj, ObjFunction, ObjString};
 
 #[derive(Debug, Clone)]
 pub enum Value {
     Bool(bool),
     Nil,
     Number(f64),
-    Obj(Rc<dyn Obj>),
+    Obj(Obj),
 }
 
 impl Default for Value {
@@ -43,8 +40,8 @@ impl PartialEq for Value {
             (Self::Bool(l0), Self::Bool(r0)) => l0 == r0,
             (Self::Number(l0), Self::Number(r0)) => l0 == r0,
             (Self::Obj(l0), Self::Obj(r0)) => {
-                let l0 = l0.as_obj_string().unwrap();
-                let r0 = r0.as_obj_string().unwrap();
+                let l0 = l0.as_obj_string();
+                let r0 = r0.as_obj_string();
                 // Exploit systematic string interning
                 (l0 as *const ObjString) == (r0 as *const ObjString)
             }
@@ -74,56 +71,37 @@ impl Value {
         Self::Number(n)
     }
 
-    pub fn from_obj(o: Rc<dyn Obj>) -> Self {
-        Self::Obj(o)
-    }
-
-    pub fn is_obj_type(&self, kind: ObjType) -> bool {
-        if let Value::Obj(obj) = self {
-            return (*obj).kind() == kind;
-        }
-        false
+    pub fn from_obj(obj: Obj) -> Self {
+        Self::Obj(obj)
     }
 
     pub fn is_string(&self) -> bool {
-        self.is_obj_type(ObjType::String)
-    }
-
-    pub fn as_obj(&self) -> &dyn Obj {
-        if let Value::Obj(obj) = self {
-            return &**obj;
+        match self {
+            Self::Obj(obj) => match obj {
+                Obj::String(_) => true,
+                _ => false,
+            },
+            _ => false,
         }
-        panic!()
     }
 
-    pub fn as_obj_rc(&self) -> Rc<dyn Obj> {
-        if let Value::Obj(obj) = self {
-            return Rc::clone(obj);
+    pub fn as_obj(&self) -> &Obj {
+        if let Self::Obj(obj) = self {
+            return obj;
         }
         panic!()
     }
 
     pub fn as_string(&self) -> &ObjString {
-        self.as_concrete::<ObjString>()
-    }
-
-    pub fn as_concrete<T: Obj>(&self) -> &T {
-        self.as_obj().downcast_ref().unwrap()
-    }
-
-    pub fn as_any_rc(&self) -> Rc<dyn Any> {
-        if let Value::Obj(obj) = self {
-            return obj.clone()
-        }
-        panic!()
+        self.as_obj().as_obj_string()
     }
 
     pub fn as_string_rc(&self) -> Rc<ObjString> {
-        self.as_concrete_rc::<ObjString>()
+        self.as_obj().as_obj_string_rc()
     }
 
-    pub fn as_concrete_rc<T : Obj>(&self) -> Rc<T> {
-        Rc::downcast(self.as_any_rc()).unwrap()
+    pub fn as_function_rc(&self) -> Rc<ObjFunction> {
+        self.as_obj().as_obj_function_rc()
     }
 }
 

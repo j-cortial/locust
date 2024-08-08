@@ -11,4 +11,3 @@ default = ["debug_print_code", "debug_trace_execution"]
 [dependencies]
 num-traits = "0.2"
 num-derive = "0.4"
-downcast-rs = "1.2.1"

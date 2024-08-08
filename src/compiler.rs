@@ -3,10 +3,13 @@ use num_traits::{FromPrimitive, ToPrimitive};
 
 use crate::{
     chunk::{
-        OP_ADD, OP_CALL, OP_CLOSE_UPVALUE, OP_CLOSURE, OP_CONSTANT, OP_DEFINE_GLOBAL, OP_DIVIDE, OP_EQUAL, OP_FALSE, OP_GET_GLOBAL, OP_GET_LOCAL, OP_GET_UPVALUE, OP_GREATER, OP_JUMP, OP_JUMP_IF_FALSE, OP_LESS, OP_LOOP, OP_MULTIPLY, OP_NEGATE, OP_NIL, OP_NOT, OP_POP, OP_PRINT, OP_RETURN, OP_SET_GLOBAL, OP_SET_LOCAL, OP_SET_UPVALUE, OP_SUBTRACT, OP_TRUE
+        OP_ADD, OP_CALL, OP_CLOSE_UPVALUE, OP_CLOSURE, OP_CONSTANT, OP_DEFINE_GLOBAL, OP_DIVIDE,
+        OP_EQUAL, OP_FALSE, OP_GET_GLOBAL, OP_GET_LOCAL, OP_GET_UPVALUE, OP_GREATER, OP_JUMP,
+        OP_JUMP_IF_FALSE, OP_LESS, OP_LOOP, OP_MULTIPLY, OP_NEGATE, OP_NIL, OP_NOT, OP_POP,
+        OP_PRINT, OP_RETURN, OP_SET_GLOBAL, OP_SET_LOCAL, OP_SET_UPVALUE, OP_SUBTRACT, OP_TRUE,
     },
     debug::disassemble,
-    object::{Intern, ObjFunction, ObjString},
+    object::{Intern, Obj, ObjFunction, ObjString},
     scanner::{Scanner, Token, TokenType},
     value::Value,
 };
@@ -277,7 +280,7 @@ impl<'s, 'a: 's> Parser<'s, 'a> {
     fn string(&mut self, _can_assign: bool) {
         let token_span = self.previous.unwrap().span;
         let obj_string = ObjString::from_u8(self.intern, &token_span[1..token_span.len() - 1]);
-        self.emit_constant(Value::from_obj(obj_string));
+        self.emit_constant(Value::from_obj(Obj::String(obj_string)));
     }
 
     fn named_variable(&mut self, name: Token<'s>, can_assign: bool) {
@@ -353,7 +356,7 @@ impl<'s, 'a: 's> Parser<'s, 'a> {
     fn identifier_constant(&mut self, name: &Token) -> u8 {
         let token_span = name.span;
         let value = ObjString::from_u8(self.intern, token_span);
-        self.make_constant(Value::from_obj(value))
+        self.make_constant(Value::from_obj(Obj::String(value)))
     }
 
     fn add_local(&mut self, name: &Token<'s>) {
@@ -468,7 +471,9 @@ impl<'s, 'a: 's> Parser<'s, 'a> {
         let (function, upvalues) = self.end_compiler();
         let upvalue_count = function.upvalue_count;
         assert_eq!(upvalues.len(), upvalue_count as usize);
-        let constant = self.make_constant(Value::from_obj(Rc::<ObjFunction>::from(function)));
+        let constant = self.make_constant(Value::from_obj(Obj::Function(Rc::<ObjFunction>::from(
+            function,
+        ))));
         self.emit_bytes(OP_CLOSURE, constant);
 
         for upvalue in upvalues {

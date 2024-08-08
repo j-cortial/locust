@@ -53,7 +53,7 @@ pub fn disassemble_instruction(chunk: &Chunk, offset: usize) -> usize {
             current_offset += 1;
             let value = chunk.constants()[constant as usize].clone();
             println!("{:16} {constant:4} {}", "OP_CLOSURE", value);
-            let function: Rc<ObjFunction> = value.as_concrete_rc();
+            let function: Rc<ObjFunction> = value.as_function_rc();
             for _ in 0..function.upvalue_count {
                 let is_local = chunk[current_offset];
                 current_offset += 1;

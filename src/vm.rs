@@ -19,7 +19,7 @@ use crate::{
     compiler::compile,
     debug::disassemble_instruction,
     object::{
-        Intern, NativeFn, ObjClosure, ObjFunction, ObjNative, ObjString, ObjType, ObjUpvalue,
+        Intern, NativeFn, Obj, ObjClosure, ObjFunction, ObjNative, ObjString, ObjUpvalue,
         UpvalueLocation,
     },
     table::Table,
@@ -151,10 +151,12 @@ impl VM {
         };
         let function: Rc<ObjFunction> = script.into();
         assert_eq!(self.stack.count, 0);
-        self.stack.push(Value::from_obj(function.clone()));
+        self.stack
+            .push(Value::from_obj(Obj::Function(function.clone())));
         let closure = Rc::new(ObjClosure::new(function));
         self.stack.pop();
-        self.stack.push(Value::from_obj(closure.clone()));
+        self.stack
+            .push(Value::from_obj(Obj::Closure(closure.clone())));
         let script = CallFrameInfo::new(closure, 0);
         self.frames.0.push(script);
         self.run()
@@ -320,9 +322,11 @@ impl VM {
                     frame = self.frames.active_frame(&mut self.stack);
                 }
                 OP_CLOSURE => {
-                    let function = Self::read_constant(&mut frame).as_concrete_rc();
+                    let function = Self::read_constant(&mut frame).as_function_rc();
                     let closure = Rc::new(ObjClosure::new(function));
-                    frame.stack_mut().push(Value::from_obj(closure.clone()));
+                    frame
+                        .stack_mut()
+                        .push(Value::from_obj(Obj::Closure(closure.clone())));
                     let mut upvalues = closure.upvalues.borrow_mut();
                     let upvalue_count = closure.function.upvalue_count as usize;
                     upvalues.reserve(upvalue_count);
@@ -409,8 +413,10 @@ impl VM {
         function: NativeFn,
     ) {
         let name = ObjString::from_u8(intern, name);
-        stack.push(Value::from_obj(name));
-        stack.push(Value::from_obj(Rc::new(ObjNative::new(function))));
+        stack.push(Value::from_obj(Obj::String(name)));
+        stack.push(Value::from_obj(Obj::Native(Rc::new(ObjNative::new(
+            function,
+        )))));
         let key = stack.peek(1).unwrap();
         let key = key.as_string_rc();
         let value = stack.peek(0).unwrap();
@@ -457,22 +463,21 @@ impl VM {
         let a = frame.stack_mut().pop();
         frame
             .stack_mut()
-            .push(Value::from_obj(ObjString::concatenate(
+            .push(Value::from_obj(Obj::String(ObjString::concatenate(
                 intern,
                 &a.as_string(),
                 &b.as_string(),
-            )));
+            ))));
     }
 
     fn call_value(mut frame: CallFrame, callee: Value, arg_count: u8) -> bool {
         if let Value::Obj(callee) = callee {
-            match callee.kind() {
-                ObjType::Closure => {
-                    return Self::call(frame, Rc::downcast(callee).unwrap(), arg_count);
+            match callee {
+                Obj::Closure(callee) => {
+                    return Self::call(frame, callee, arg_count);
                 }
-                ObjType::Native => {
-                    let native = Rc::downcast::<ObjNative>(callee).unwrap();
-                    let native = native.native_ptr();
+                Obj::Native(callee) => {
+                    let native = callee.native_ptr();
                     let bottom = frame.stack().count() - arg_count as usize;
                     let result = native(arg_count as i32, &frame.stack()[bottom..]);
                     frame.slots.stack.count -= arg_count as usize + 1;

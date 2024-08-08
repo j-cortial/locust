@@ -1,55 +1,62 @@
 use std::cell::RefCell;
-use std::fmt::Debug;
-use std::fmt::Display;
+use std::fmt::{Debug, Display};
 use std::rc::Rc;
-
-extern crate downcast_rs;
-use downcast_rs::impl_downcast;
-use downcast_rs::Downcast;
 
 use crate::chunk::Chunk;
 use crate::value::Value;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ObjType {
-    Closure,
-    Function,
-    Native,
-    String,
-    Upvalue,
+#[derive(Debug, Clone)]
+pub enum Obj {
+    Closure(Rc<ObjClosure>),
+    Function(Rc<ObjFunction>),
+    Native(Rc<ObjNative>),
+    String(Rc<ObjString>),
+    Upvalue(Rc<ObjUpvalue>),
 }
 
-pub trait Obj: Debug + Downcast {
-    fn kind(&self) -> ObjType;
-
-    fn as_obj_string(&self) -> Option<&ObjString> {
-        None
-    }
-
-    fn as_obj_function(&self) -> Option<&ObjFunction> {
-        None
-    }
-
-    fn as_obj_native(&self) -> Option<&ObjNative> {
-        None
-    }
-
-    fn as_obj_closure(&self) -> Option<&ObjClosure> {
-        None
-    }
-}
-
-impl_downcast!(Obj);
-
-impl Display for dyn Obj {
+impl Display for Obj {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self.kind() {
-            ObjType::String => write!(f, "{}", self.as_obj_string().unwrap()),
-            ObjType::Function => write!(f, "{}", self.as_obj_function().unwrap()),
-            ObjType::Native => write!(f, "<native fn>"),
-            ObjType::Closure => write!(f, "{}", self.as_obj_closure().unwrap().function),
-            ObjType::Upvalue => write!(f, "upvalue"),
+        match self {
+            Obj::String(o) => write!(f, "{}", o),
+            Obj::Function(o) => write!(f, "{}", o),
+            Obj::Native(_) => write!(f, "<native fn>"),
+            Obj::Closure(o) => write!(f, "{}", o.function),
+            Obj::Upvalue(_) => write!(f, "upvalue"),
         }
+    }
+}
+
+impl Obj {
+    fn as_obj_string_rc_ref(&self) -> &Rc<ObjString> {
+        match self {
+            Self::String(str) => {
+                return str;
+            }
+            _ => {}
+        }
+        panic!();
+    }
+
+    pub fn as_obj_string_rc(&self) -> Rc<ObjString> {
+        self.as_obj_string_rc_ref().clone()
+    }
+
+    pub fn as_obj_string(&self) -> &ObjString {
+        self.as_obj_string_rc_ref()
+    }
+
+    fn as_obj_function_rc_ref(&self) -> &Rc<ObjFunction> {
+        match self {
+            Self::Function(func) => {
+                return func;
+            }
+            _ => {}
+        }
+        panic!();
+    }
+
+    pub fn as_obj_function_rc(&self) -> Rc<ObjFunction> {
+        self.as_obj_function_rc_ref().clone()
     }
 }
 
@@ -59,16 +66,6 @@ pub struct ObjFunction {
     pub upvalue_count: u32,
     pub chunk: Chunk,
     pub name: Option<Rc<ObjString>>,
-}
-
-impl Obj for ObjFunction {
-    fn kind(&self) -> ObjType {
-        ObjType::Function
-    }
-
-    fn as_obj_function(&self) -> Option<&ObjFunction> {
-        Some(self)
-    }
 }
 
 impl ObjFunction {
@@ -93,16 +90,6 @@ pub struct ObjNative {
     function: NativeFn,
 }
 
-impl Obj for ObjNative {
-    fn kind(&self) -> ObjType {
-        ObjType::Native
-    }
-
-    fn as_obj_native(&self) -> Option<&ObjNative> {
-        Some(self)
-    }
-}
-
 impl ObjNative {
     pub fn new(function: NativeFn) -> Self {
         Self { function }
@@ -116,16 +103,6 @@ impl ObjNative {
 #[derive(Debug, PartialEq, Eq, Hash)]
 pub struct ObjString {
     pub content: String,
-}
-
-impl Obj for ObjString {
-    fn kind(&self) -> ObjType {
-        ObjType::String
-    }
-
-    fn as_obj_string(&self) -> Option<&ObjString> {
-        Some(self)
-    }
 }
 
 impl ObjString {
@@ -185,12 +162,6 @@ impl ObjUpvalue {
     }
 }
 
-impl Obj for ObjUpvalue {
-    fn kind(&self) -> ObjType {
-        ObjType::Upvalue
-    }
-}
-
 #[derive(Debug)]
 pub struct ObjClosure {
     pub function: Rc<ObjFunction>,
@@ -203,15 +174,5 @@ impl ObjClosure {
             function,
             upvalues: Default::default(),
         }
-    }
-}
-
-impl Obj for ObjClosure {
-    fn kind(&self) -> ObjType {
-        ObjType::Closure
-    }
-
-    fn as_obj_closure(&self) -> Option<&ObjClosure> {
-        Some(&self)
     }
 }
