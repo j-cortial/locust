@@ -4,10 +4,10 @@ use num_traits::{FromPrimitive, ToPrimitive};
 use crate::{
     chunk::{
         OP_ADD, OP_CALL, OP_CLASS, OP_CLOSE_UPVALUE, OP_CLOSURE, OP_CONSTANT, OP_DEFINE_GLOBAL,
-        OP_DIVIDE, OP_EQUAL, OP_FALSE, OP_GET_GLOBAL, OP_GET_LOCAL, OP_GET_UPVALUE, OP_GREATER,
-        OP_JUMP, OP_JUMP_IF_FALSE, OP_LESS, OP_LOOP, OP_MULTIPLY, OP_NEGATE, OP_NIL, OP_NOT,
-        OP_POP, OP_PRINT, OP_RETURN, OP_SET_GLOBAL, OP_SET_LOCAL, OP_SET_UPVALUE, OP_SUBTRACT,
-        OP_TRUE,
+        OP_DIVIDE, OP_EQUAL, OP_FALSE, OP_GET_GLOBAL, OP_GET_LOCAL, OP_GET_PROPERTY,
+        OP_GET_UPVALUE, OP_GREATER, OP_JUMP, OP_JUMP_IF_FALSE, OP_LESS, OP_LOOP, OP_MULTIPLY,
+        OP_NEGATE, OP_NIL, OP_NOT, OP_POP, OP_PRINT, OP_RETURN, OP_SET_GLOBAL, OP_SET_LOCAL,
+        OP_SET_PROPERTY, OP_SET_UPVALUE, OP_SUBTRACT, OP_TRUE,
     },
     debug::disassemble,
     object::{Intern, Obj, ObjFunction, ObjString},
@@ -245,6 +245,18 @@ impl<'s, 'a: 's> Parser<'s, 'a> {
     fn call(&mut self, _can_assign: bool) {
         let arg_count = self.argument_list();
         self.emit_bytes(OP_CALL, arg_count);
+    }
+
+    fn dot(&mut self, can_assign: bool) {
+        self.consume(TokenType::Identifier, "Expect property name after '.'");
+        let name = self.identifier_constant(&self.previous.unwrap());
+
+        if can_assign && self.match_token(TokenType::Equal) {
+            self.expression();
+            self.emit_bytes(OP_SET_PROPERTY, name);
+        } else {
+            self.emit_bytes(OP_GET_PROPERTY, name);
+        }
     }
 
     fn literal(&mut self, _can_assign: bool) {
@@ -698,7 +710,7 @@ fn get_rule<'a, 'c, 'd>(token_type: TokenType) -> ParseRule<'a, 'c, 'd> {
         parse_rule(None, None, Precedence::None),
         parse_rule(None, None, Precedence::None),
         parse_rule(None, None, Precedence::None),
-        parse_rule(None, None, Precedence::None),
+        parse_rule(None, Some(Parser::dot), Precedence::Call),
         parse_rule(Some(Parser::unary), Some(Parser::binary), Precedence::Term),
         parse_rule(None, Some(Parser::binary), Precedence::Term),
         parse_rule(None, None, Precedence::None),

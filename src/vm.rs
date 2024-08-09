@@ -11,9 +11,9 @@ use crate::{
     chunk::{
         Chunk, OP_ADD, OP_CALL, OP_CLASS, OP_CLOSE_UPVALUE, OP_CLOSURE, OP_CONSTANT,
         OP_DEFINE_GLOBAL, OP_DIVIDE, OP_EQUAL, OP_FALSE, OP_GET_GLOBAL, OP_GET_LOCAL,
-        OP_GET_UPVALUE, OP_GREATER, OP_JUMP, OP_JUMP_IF_FALSE, OP_LESS, OP_LOOP, OP_MULTIPLY,
-        OP_NEGATE, OP_NIL, OP_NOT, OP_POP, OP_PRINT, OP_RETURN, OP_SET_GLOBAL, OP_SET_LOCAL,
-        OP_SET_UPVALUE, OP_SUBTRACT, OP_TRUE,
+        OP_GET_PROPERTY, OP_GET_UPVALUE, OP_GREATER, OP_JUMP, OP_JUMP_IF_FALSE, OP_LESS, OP_LOOP,
+        OP_MULTIPLY, OP_NEGATE, OP_NIL, OP_NOT, OP_POP, OP_PRINT, OP_RETURN, OP_SET_GLOBAL,
+        OP_SET_LOCAL, OP_SET_PROPERTY, OP_SET_UPVALUE, OP_SUBTRACT, OP_TRUE,
     },
     compiler::compile,
     debug::disassemble_instruction,
@@ -229,10 +229,50 @@ impl VM {
                 }
                 OP_SET_UPVALUE => {
                     let slot = Self::read_byte(&mut frame);
-                    let upvalues = frame.frames.0.last().unwrap().closure.upvalues.borrow_mut();
-                    let mut upvalue = upvalues[slot as usize].borrow_mut();
+                    let upvalues =
+                        GcCell::borrow_mut(&frame.frames.0.last().unwrap().closure.upvalues);
+                    let upvalue = &upvalues[slot as usize];
                     let value = frame.stack().peek(0).unwrap();
-                    *upvalue.location_mut(&mut frame.slots.stack.values) = value;
+                    let mut upvalue_mut = GcCell::borrow_mut(upvalue);
+                    *upvalue_mut.location_mut(&mut frame.slots.stack.values) = value;
+                }
+                OP_GET_PROPERTY => {
+                    let value = frame.stack().peek(0).unwrap();
+                    if let Value::Obj(ref obj) = value {
+                        if let Obj::Instance(instance) = obj {
+                            let name = Self::read_string(&mut frame);
+                            if let Some(value) = GcCell::borrow(&instance).fields.get(name.clone())
+                            {
+                                frame.stack_mut().pop(); // Instance
+                                frame.stack_mut().push(value.clone());
+                            } else {
+                                Self::runtime_error(
+                                    &mut frame,
+                                    &format!("Undefined property '{}'", name),
+                                );
+                                return InterpretResult::RuntimeError;
+                            }
+                            continue;
+                        }
+                    }
+                    Self::runtime_error(&mut frame, "Only instances have properties");
+                    return InterpretResult::RuntimeError;
+                }
+                OP_SET_PROPERTY => {
+                    let value = frame.stack().peek(1).unwrap();
+                    if let Value::Obj(ref obj) = value {
+                        if let Obj::Instance(instance) = obj {
+                            let key = Self::read_string(&mut frame);
+                            let mut instance = GcCell::borrow_mut(&instance);
+                            instance.fields.set(key, frame.stack().peek(0).unwrap());
+                            let value = frame.stack_mut().pop();
+                            frame.stack_mut().pop();
+                            frame.stack_mut().push(value);
+                            continue;
+                        }
+                    }
+                    Self::runtime_error(&mut frame, "Only instances have fields");
+                    return InterpretResult::RuntimeError;
                 }
                 OP_EQUAL => {
                     let b = frame.stack_mut().pop();
@@ -395,6 +435,11 @@ impl VM {
         frame.chunk().constants()[index].clone()
     }
 
+    fn read_string(frame: &mut CallFrame) -> Rc<ObjString> {
+        let constant = Self::read_constant(frame);
+        constant.as_string_rc()
+    }
+
     fn runtime_error(frame: &mut CallFrame, msg: &str) {
         eprintln!("{msg}");
         for frame in frame.frames.0.iter().rev() {
@@ -531,7 +576,8 @@ impl VM {
             if let UpvalueLocation::Open(index) = upvalue_ref.location {
                 drop(upvalue_ref);
                 let value = frame.slots.stack[index].clone();
-                upvalue.borrow_mut().location = UpvalueLocation::Closed(value);
+                let mut upvalue_mut = GcCell::borrow_mut(&upvalue);
+                upvalue_mut.location = UpvalueLocation::Closed(value);
             } else {
                 panic!()
             }

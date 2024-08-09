@@ -62,6 +62,20 @@ impl Obj {
     pub fn as_obj_function_rc(&self) -> Rc<ObjFunction> {
         self.as_obj_function_rc_ref().clone()
     }
+
+    fn as_obj_instance_gc_ref(&self) -> &Gc<GcCell<ObjInstance>> {
+        match self {
+            Self::Instance(instance) => {
+                return instance;
+            }
+            _ => {}
+        }
+        panic!();
+    }
+
+    pub fn as_obj_instance_gc(&self) -> Gc<GcCell<ObjInstance>> {
+        self.as_obj_instance_gc_ref().clone()
+    }
 }
 
 #[derive(Debug, Default)]
@@ -185,7 +199,7 @@ impl ObjClosure {
 #[derive(Debug, Trace, Finalize)]
 pub struct ObjClass {
     #[unsafe_ignore_trace]
-    name: Rc<ObjString>,
+    pub name: Rc<ObjString>,
 }
 
 impl ObjClass {
@@ -196,8 +210,8 @@ impl ObjClass {
 
 #[derive(Debug, Trace, Finalize)]
 pub struct ObjInstance {
-    class: Gc<ObjClass>,
-    fields: Table,
+    pub class: Gc<ObjClass>,
+    pub fields: Table,
 }
 
 impl ObjInstance {

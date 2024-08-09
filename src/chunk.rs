@@ -16,6 +16,8 @@ pub enum OpCode {
     OpSetGlobal,
     OpGetUpvalue,
     OpSetUpvalue,
+    OPGetProperty,
+    OPSetProperty,
     OpEqual,
     OpGreater,
     OpLess,
@@ -48,6 +50,8 @@ pub const OP_DEFINE_GLOBAL: u8 = OpCode::OpDefineGlobal as u8;
 pub const OP_SET_GLOBAL: u8 = OpCode::OpSetGlobal as u8;
 pub const OP_GET_UPVALUE: u8 = OpCode::OpGetUpvalue as u8;
 pub const OP_SET_UPVALUE: u8 = OpCode::OpSetUpvalue as u8;
+pub const OP_GET_PROPERTY: u8 = OpCode::OPGetProperty as u8;
+pub const OP_SET_PROPERTY: u8 = OpCode::OPSetProperty as u8;
 pub const OP_EQUAL: u8 = OpCode::OpEqual as u8;
 pub const OP_GREATER: u8 = OpCode::OpGreater as u8;
 pub const OP_LESS: u8 = OpCode::OpLess as u8;
