@@ -10,16 +10,16 @@ use std::{
 
 use crate::{
     chunk::{
-        Chunk, OP_ADD, OP_CALL, OP_CLOSE_UPVALUE, OP_CLOSURE, OP_CONSTANT, OP_DEFINE_GLOBAL,
-        OP_DIVIDE, OP_EQUAL, OP_FALSE, OP_GET_GLOBAL, OP_GET_LOCAL, OP_GET_UPVALUE, OP_GREATER,
-        OP_JUMP, OP_JUMP_IF_FALSE, OP_LESS, OP_LOOP, OP_MULTIPLY, OP_NEGATE, OP_NIL, OP_NOT,
-        OP_POP, OP_PRINT, OP_RETURN, OP_SET_GLOBAL, OP_SET_LOCAL, OP_SET_UPVALUE, OP_SUBTRACT,
-        OP_TRUE,
+        Chunk, OP_ADD, OP_CALL, OP_CLASS, OP_CLOSE_UPVALUE, OP_CLOSURE, OP_CONSTANT,
+        OP_DEFINE_GLOBAL, OP_DIVIDE, OP_EQUAL, OP_FALSE, OP_GET_GLOBAL, OP_GET_LOCAL,
+        OP_GET_UPVALUE, OP_GREATER, OP_JUMP, OP_JUMP_IF_FALSE, OP_LESS, OP_LOOP, OP_MULTIPLY,
+        OP_NEGATE, OP_NIL, OP_NOT, OP_POP, OP_PRINT, OP_RETURN, OP_SET_GLOBAL, OP_SET_LOCAL,
+        OP_SET_UPVALUE, OP_SUBTRACT, OP_TRUE,
     },
     compiler::compile,
     debug::disassemble_instruction,
     object::{
-        Intern, NativeFn, Obj, ObjClosure, ObjFunction, ObjNative, ObjString, ObjUpvalue,
+        Intern, NativeFn, Obj, ObjClass, ObjClosure, ObjFunction, ObjNative, ObjString, ObjUpvalue,
         UpvalueLocation,
     },
     table::Table,
@@ -367,6 +367,12 @@ impl VM {
                     self.stack.count = return_stack_count;
                     self.stack.push(result);
                     frame = self.frames.active_frame(&mut self.stack);
+                }
+                OP_CLASS => {
+                    let name = Self::read_constant(&mut frame).as_string_rc();
+                    frame
+                        .stack_mut()
+                        .push(Value::Obj(Obj::Class(Rc::new(ObjClass::new(name)))));
                 }
                 _ => {}
             }

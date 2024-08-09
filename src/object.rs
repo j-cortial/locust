@@ -7,6 +7,7 @@ use crate::value::Value;
 
 #[derive(Debug, Clone)]
 pub enum Obj {
+    Class(Rc<ObjClass>),
     Closure(Rc<ObjClosure>),
     Function(Rc<ObjFunction>),
     Native(Rc<ObjNative>),
@@ -16,10 +17,11 @@ pub enum Obj {
 impl Display for Obj {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Obj::String(o) => write!(f, "{}", o),
+            Obj::Class(o) => write!(f, "{}", o.name),
+            Obj::Closure(o) => write!(f, "{}", o.function),
             Obj::Function(o) => write!(f, "{}", o),
             Obj::Native(_) => write!(f, "<native fn>"),
-            Obj::Closure(o) => write!(f, "{}", o.function),
+            Obj::String(o) => write!(f, "{}", o),
         }
     }
 }
@@ -172,5 +174,16 @@ impl ObjClosure {
             function,
             upvalues: Default::default(),
         }
+    }
+}
+
+#[derive(Debug)]
+pub struct ObjClass {
+    name: Rc<ObjString>,
+}
+
+impl ObjClass {
+    pub fn new(name: Rc<ObjString>) -> Self {
+        Self { name }
     }
 }
