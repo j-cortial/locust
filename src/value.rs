@@ -40,10 +40,8 @@ impl PartialEq for Value {
             (Self::Bool(l0), Self::Bool(r0)) => l0 == r0,
             (Self::Number(l0), Self::Number(r0)) => l0 == r0,
             (Self::Obj(l0), Self::Obj(r0)) => {
-                let l0 = l0.as_obj_string();
-                let r0 = r0.as_obj_string();
                 // Exploit systematic string interning
-                (l0 as *const ObjString) == (r0 as *const ObjString)
+                Rc::<ObjString>::ptr_eq(&l0.as_obj_string_rc(), &r0.as_obj_string_rc())
             }
             _ => core::mem::discriminant(self) == core::mem::discriminant(other),
         }
