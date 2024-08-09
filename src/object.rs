@@ -11,7 +11,6 @@ pub enum Obj {
     Function(Rc<ObjFunction>),
     Native(Rc<ObjNative>),
     String(Rc<ObjString>),
-    Upvalue(Rc<ObjUpvalue>),
 }
 
 impl Display for Obj {
@@ -21,7 +20,6 @@ impl Display for Obj {
             Obj::Function(o) => write!(f, "{}", o),
             Obj::Native(_) => write!(f, "<native fn>"),
             Obj::Closure(o) => write!(f, "{}", o.function),
-            Obj::Upvalue(_) => write!(f, "upvalue"),
         }
     }
 }
