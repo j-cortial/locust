@@ -1,9 +1,11 @@
 use std::ops::Deref;
 use std::{fmt::Display, rc::Rc};
 
+use gc::{Finalize, Trace};
+
 use crate::object::{Obj, ObjFunction, ObjString};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Trace, Finalize)]
 pub enum Value {
     Bool(bool),
     Nil,

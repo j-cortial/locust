@@ -2,10 +2,12 @@ use std::collections::hash_map::Entry;
 use std::hash::Hash;
 use std::{collections::HashMap, rc::Rc};
 
+use gc::{Finalize, Trace};
+
 use crate::object::Intern;
 use crate::{object::ObjString, value::Value};
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, Trace, Finalize)]
 pub struct Table(HashMap<Key, Value>);
 
 impl Table {
@@ -22,8 +24,8 @@ impl Table {
     }
 }
 
-#[derive(Debug, Eq)]
-struct Key(Rc<ObjString>);
+#[derive(Debug, Eq, Trace, Finalize)]
+struct Key(#[unsafe_ignore_trace] Rc<ObjString>);
 
 impl Key {
     fn underlying(&self) -> &ObjString {
@@ -62,6 +64,6 @@ impl Intern for Table {
                 res
             }
         }
-        .0
+        .0.clone()
     }
 }

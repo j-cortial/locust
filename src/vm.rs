@@ -1,6 +1,5 @@
 use std::{
     array::from_fn,
-    cell::RefCell,
     collections::BTreeMap,
     ffi::c_long,
     fmt::Display,
@@ -19,14 +18,15 @@ use crate::{
     compiler::compile,
     debug::disassemble_instruction,
     object::{
-        Intern, NativeFn, Obj, ObjClass, ObjClosure, ObjFunction, ObjNative, ObjString, ObjUpvalue,
-        UpvalueLocation,
+        Intern, NativeFn, Obj, ObjClass, ObjClosure, ObjFunction, ObjInstance, ObjNative,
+        ObjString, ObjUpvalue, UpvalueLocation,
     },
     table::Table,
     value::ValueContent,
 };
 
 use crate::value;
+use gc::{Gc, GcCell};
 use value::Value;
 
 const FRAME_MAX: usize = 64;
@@ -34,13 +34,13 @@ const STACK_MAX: usize = FRAME_MAX * u8::MAX as usize;
 
 #[derive(Debug)]
 struct CallFrameInfo {
-    closure: Rc<ObjClosure>,
+    closure: Gc<ObjClosure>,
     ip: usize,
     value_offset: usize,
 }
 
 impl CallFrameInfo {
-    fn new(closure: Rc<ObjClosure>, value_offset: usize) -> Self {
+    fn new(closure: Gc<ObjClosure>, value_offset: usize) -> Self {
         Self {
             closure,
             ip: 0,
@@ -112,7 +112,7 @@ pub struct VM {
     stack: ValueStack<STACK_MAX>,
     globals: Table,
     strings: Table,
-    open_upvalues: BTreeMap<usize, Rc<RefCell<ObjUpvalue>>>,
+    open_upvalues: BTreeMap<usize, Gc<GcCell<ObjUpvalue>>>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -153,7 +153,7 @@ impl VM {
         assert_eq!(self.stack.count, 0);
         self.stack
             .push(Value::from_obj(Obj::Function(function.clone())));
-        let closure = Rc::new(ObjClosure::new(function));
+        let closure = Gc::new(ObjClosure::new(function));
         self.stack.pop();
         self.stack
             .push(Value::from_obj(Obj::Closure(closure.clone())));
@@ -323,7 +323,7 @@ impl VM {
                 }
                 OP_CLOSURE => {
                     let function = Self::read_constant(&mut frame).as_function_rc();
-                    let closure = Rc::new(ObjClosure::new(function));
+                    let closure = Gc::new(ObjClosure::new(function));
                     frame
                         .stack_mut()
                         .push(Value::from_obj(Obj::Closure(closure.clone())));
@@ -372,7 +372,7 @@ impl VM {
                     let name = Self::read_constant(&mut frame).as_string_rc();
                     frame
                         .stack_mut()
-                        .push(Value::Obj(Obj::Class(Rc::new(ObjClass::new(name)))));
+                        .push(Value::Obj(Obj::Class(Gc::new(ObjClass::new(name)))));
                 }
                 _ => {}
             }
@@ -477,14 +477,23 @@ impl VM {
     }
 
     fn call_value(mut frame: CallFrame, callee: Value, arg_count: u8) -> bool {
-        if let Value::Obj(callee) = callee {
+        if let Value::Obj(ref callee) = callee {
             match callee {
+                Obj::Class(callee) => {
+                    let stack_top = frame.stack().count();
+                    let slot = stack_top - arg_count as usize - 1;
+                    frame.stack_mut()[slot] = Value::Obj(Obj::Instance(Gc::new(GcCell::new(
+                        ObjInstance::new(callee.clone()),
+                    ))));
+                    return true;
+                }
                 Obj::Closure(callee) => {
-                    return Self::call(frame, callee, arg_count);
+                    return Self::call(frame, Gc::clone(callee), arg_count);
                 }
                 Obj::Native(callee) => {
                     let native = callee.native_ptr();
-                    let bottom = frame.stack().count() - arg_count as usize;
+                    let stack_top = frame.stack().count();
+                    let bottom = stack_top - arg_count as usize;
                     let result = native(arg_count as i32, &frame.stack()[bottom..]);
                     frame.slots.stack.count -= arg_count as usize + 1;
                     frame.stack_mut().push(result);
@@ -498,21 +507,21 @@ impl VM {
     }
 
     fn capture_upvalue(
-        open_upvalues: &mut BTreeMap<usize, Rc<RefCell<ObjUpvalue>>>,
+        open_upvalues: &mut BTreeMap<usize, Gc<GcCell<ObjUpvalue>>>,
         frame: &CallFrame,
         index: usize,
-    ) -> Rc<RefCell<ObjUpvalue>> {
+    ) -> Gc<GcCell<ObjUpvalue>> {
         let base_index = frame.slots.offset + index;
         match open_upvalues.entry(base_index) {
             std::collections::btree_map::Entry::Vacant(entry) => {
-                Rc::clone(entry.insert(Rc::new(RefCell::new(ObjUpvalue::new(base_index)))))
+                Gc::clone(entry.insert(Gc::new(GcCell::new(ObjUpvalue::new(base_index)))))
             }
-            std::collections::btree_map::Entry::Occupied(entry) => Rc::clone(entry.get()),
+            std::collections::btree_map::Entry::Occupied(entry) => Gc::clone(entry.get()),
         }
     }
 
     fn close_upvalues(
-        open_upvalues: &mut BTreeMap<usize, Rc<RefCell<ObjUpvalue>>>,
+        open_upvalues: &mut BTreeMap<usize, Gc<GcCell<ObjUpvalue>>>,
         frame: &CallFrame,
         cutoff: usize,
     ) {
@@ -529,7 +538,7 @@ impl VM {
         }
     }
 
-    fn call(mut frame: CallFrame, closure: Rc<ObjClosure>, arg_count: u8) -> bool {
+    fn call(mut frame: CallFrame, closure: Gc<ObjClosure>, arg_count: u8) -> bool {
         if arg_count as u32 != closure.function.arity {
             Self::runtime_error(
                 &mut frame,

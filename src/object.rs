@@ -1,17 +1,20 @@
-use std::cell::RefCell;
 use std::fmt::{Debug, Display};
 use std::rc::Rc;
 
+use gc::{Finalize, Gc, GcCell, Trace};
+
 use crate::chunk::Chunk;
+use crate::table::Table;
 use crate::value::Value;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Trace, Finalize)]
 pub enum Obj {
-    Class(Rc<ObjClass>),
-    Closure(Rc<ObjClosure>),
-    Function(Rc<ObjFunction>),
-    Native(Rc<ObjNative>),
-    String(Rc<ObjString>),
+    Class(Gc<ObjClass>),
+    Closure(Gc<ObjClosure>),
+    Function(#[unsafe_ignore_trace] Rc<ObjFunction>),
+    Instance(Gc<GcCell<ObjInstance>>),
+    Native(#[unsafe_ignore_trace] Rc<ObjNative>),
+    String(#[unsafe_ignore_trace] Rc<ObjString>),
 }
 
 impl Display for Obj {
@@ -20,6 +23,7 @@ impl Display for Obj {
             Obj::Class(o) => write!(f, "{}", o.name),
             Obj::Closure(o) => write!(f, "{}", o.function),
             Obj::Function(o) => write!(f, "{}", o),
+            Obj::Instance(o) => write!(f, "{} instance", o.borrow().class.name),
             Obj::Native(_) => write!(f, "<native fn>"),
             Obj::String(o) => write!(f, "{}", o),
         }
@@ -129,13 +133,13 @@ pub trait Intern {
     fn intern(&mut self, new_instance: ObjString) -> Rc<ObjString>;
 }
 
-#[derive(Debug)]
+#[derive(Debug, Trace, Finalize)]
 pub enum UpvalueLocation {
-    Open(usize),
     Closed(Value),
+    Open(usize),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Trace, Finalize)]
 pub struct ObjUpvalue {
     pub location: UpvalueLocation,
 }
@@ -162,10 +166,11 @@ impl ObjUpvalue {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Trace, Finalize)]
 pub struct ObjClosure {
+    #[unsafe_ignore_trace]
     pub function: Rc<ObjFunction>,
-    pub upvalues: RefCell<Vec<Rc<RefCell<ObjUpvalue>>>>,
+    pub upvalues: GcCell<Vec<Gc<GcCell<ObjUpvalue>>>>,
 }
 
 impl ObjClosure {
@@ -177,13 +182,29 @@ impl ObjClosure {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Trace, Finalize)]
 pub struct ObjClass {
+    #[unsafe_ignore_trace]
     name: Rc<ObjString>,
 }
 
 impl ObjClass {
     pub fn new(name: Rc<ObjString>) -> Self {
         Self { name }
+    }
+}
+
+#[derive(Debug, Trace, Finalize)]
+pub struct ObjInstance {
+    class: Gc<ObjClass>,
+    fields: Table,
+}
+
+impl ObjInstance {
+    pub fn new(class: Gc<ObjClass>) -> Self {
+        Self {
+            class,
+            fields: Default::default(),
+        }
     }
 }
