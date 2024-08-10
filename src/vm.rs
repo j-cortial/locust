@@ -534,8 +534,11 @@ impl VM {
     fn call_value(mut frame: CallFrame, callee: Value, arg_count: u8) -> bool {
         if let Value::Obj(ref callee) = callee {
             match callee {
-                Obj::BoundMethod(callee) => {
-                    return Self::call(frame, callee.method.clone(), arg_count);
+                Obj::BoundMethod(bound) => {
+                    let stack_top = frame.stack().count();
+                    let slot = stack_top - arg_count as usize - 1;
+                    frame.stack_mut()[slot] = bound.receiver.clone();
+                    return Self::call(frame, bound.method.clone(), arg_count);
                 }
                 Obj::Class(callee) => {
                     let stack_top = frame.stack().count();

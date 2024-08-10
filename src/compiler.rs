@@ -20,6 +20,7 @@ use std::{mem, ops::Add, rc::Rc, str::from_utf8};
 struct Parser<'s, 'a: 's> {
     scanner: &'a mut Scanner<'s>,
     compiler: Box<Compiler<'s>>,
+    current_class: Option<Box<ClassCompiler>>,
     intern: &'a mut dyn Intern,
     current: Option<Token<'a>>,
     previous: Option<Token<'a>>,
@@ -36,6 +37,7 @@ impl<'s, 'a: 's> Parser<'s, 'a> {
         Self {
             scanner,
             compiler,
+            current_class: Default::default(),
             intern,
             current: None,
             previous: None,
@@ -330,6 +332,14 @@ impl<'s, 'a: 's> Parser<'s, 'a> {
         self.named_variable(self.previous.unwrap(), can_assign);
     }
 
+    fn this(&mut self, _can_assign: bool) {
+        if self.current_class.is_none() {
+            self.error("Cannot use 'this' outside of a class");
+            return;
+        }
+        self.variable(false);
+    }
+
     fn unary(&mut self, _can_assign: bool) {
         let operator_type = self.previous.unwrap().kind;
         self.parse_precedence(Precedence::Unary);
@@ -500,7 +510,7 @@ impl<'s, 'a: 's> Parser<'s, 'a> {
         self.consume(TokenType::Identifier, "Expect method name");
         let constant = self.identifier_constant(&self.previous.unwrap());
 
-        let kind = FunctionType::Function;
+        let kind = FunctionType::Method;
         self.function(kind);
         self.emit_bytes(OP_METHOD, constant);
     }
@@ -514,6 +524,9 @@ impl<'s, 'a: 's> Parser<'s, 'a> {
         self.emit_bytes(OP_CLASS, name_constant);
         self.define_variable(name_constant);
 
+        let class_compiler = Box::new(ClassCompiler::new(self.current_class.take()));
+        self.current_class = Some(class_compiler);
+
         self.named_variable(class_name, false);
         self.consume(TokenType::LeftBrace, "Expect '{' after class body");
         while !self.check(TokenType::RightBrace) && !self.check(TokenType::Eof) {
@@ -521,6 +534,9 @@ impl<'s, 'a: 's> Parser<'s, 'a> {
         }
         self.consume(TokenType::RightBrace, "Expect '}' after class body");
         self.emit_byte(OP_POP);
+
+        let class_compiler = self.current_class.as_mut().unwrap().enclosing.take();
+        self.current_class = class_compiler;
     }
 
     fn fun_declaration(&mut self) {
@@ -754,7 +770,7 @@ fn get_rule<'a, 'c, 'd>(token_type: TokenType) -> ParseRule<'a, 'c, 'd> {
         parse_rule(None, None, Precedence::None),
         parse_rule(None, None, Precedence::None),
         parse_rule(None, None, Precedence::None),
-        parse_rule(None, None, Precedence::None),
+        parse_rule(Some(Parser::this), None, Precedence::None),
         parse_rule(Some(Parser::literal), None, Precedence::None),
         parse_rule(None, None, Precedence::None),
         parse_rule(None, None, Precedence::None),
@@ -857,6 +873,7 @@ impl Upvalue {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum FunctionType {
     Function,
+    Method,
     Script,
 }
 
@@ -880,8 +897,12 @@ impl<'l> Compiler<'l> {
             function_type,
             locals: vec![Local::new(
                 Token {
-                    kind: TokenType::Eof,
-                    span: b"",
+                    kind: TokenType::This,
+                    span: if function_type != FunctionType::Function {
+                        b"this"
+                    } else {
+                        b""
+                    },
                     line: 0,
                 },
                 0,
@@ -948,5 +969,16 @@ impl<'l> Compiler<'l> {
             return;
         }
         self.locals.last_mut().map(|l| l.depth = self.scope_depth);
+    }
+}
+
+#[derive(Debug, Default)]
+struct ClassCompiler {
+    enclosing: Option<Box<ClassCompiler>>,
+}
+
+impl ClassCompiler {
+    fn new(enclosing: Option<Box<ClassCompiler>>) -> Self {
+        Self { enclosing }
     }
 }
