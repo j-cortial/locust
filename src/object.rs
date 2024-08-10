@@ -9,7 +9,7 @@ use crate::value::Value;
 
 #[derive(Debug, Clone, Trace, Finalize)]
 pub enum Obj {
-    Class(Gc<ObjClass>),
+    Class(Gc<GcCell<ObjClass>>),
     Closure(Gc<ObjClosure>),
     Function(#[unsafe_ignore_trace] Rc<ObjFunction>),
     Instance(Gc<GcCell<ObjInstance>>),
@@ -20,10 +20,10 @@ pub enum Obj {
 impl Display for Obj {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Obj::Class(o) => write!(f, "{}", o.name),
+            Obj::Class(o) => write!(f, "{}", o.borrow().name),
             Obj::Closure(o) => write!(f, "{}", o.function),
             Obj::Function(o) => write!(f, "{}", o),
-            Obj::Instance(o) => write!(f, "{} instance", o.borrow().class.name),
+            Obj::Instance(o) => write!(f, "{} instance", GcCell::borrow(&o.borrow().class).name),
             Obj::Native(_) => write!(f, "<native fn>"),
             Obj::String(o) => write!(f, "{}", o),
         }
@@ -61,6 +61,20 @@ impl Obj {
 
     pub fn as_obj_function_rc(&self) -> Rc<ObjFunction> {
         self.as_obj_function_rc_ref().clone()
+    }
+
+    fn as_obj_class_gc_ref(&self) -> &Gc<GcCell<ObjClass>> {
+        match self {
+            Self::Class(class) => {
+                return class;
+            }
+            _ => {}
+        }
+        panic!();
+    }
+
+    pub fn as_obj_class_gc(&self) -> Gc<GcCell<ObjClass>> {
+        self.as_obj_class_gc_ref().clone()
     }
 
     fn as_obj_instance_gc_ref(&self) -> &Gc<GcCell<ObjInstance>> {
@@ -200,22 +214,26 @@ impl ObjClosure {
 pub struct ObjClass {
     #[unsafe_ignore_trace]
     pub name: Rc<ObjString>,
+    pub methods: Table,
 }
 
 impl ObjClass {
     pub fn new(name: Rc<ObjString>) -> Self {
-        Self { name }
+        Self {
+            name,
+            methods: Default::default(),
+        }
     }
 }
 
 #[derive(Debug, Trace, Finalize)]
 pub struct ObjInstance {
-    pub class: Gc<ObjClass>,
+    pub class: Gc<GcCell<ObjClass>>,
     pub fields: Table,
 }
 
 impl ObjInstance {
-    pub fn new(class: Gc<ObjClass>) -> Self {
+    pub fn new(class: Gc<GcCell<ObjClass>>) -> Self {
         Self {
             class,
             fields: Default::default(),
