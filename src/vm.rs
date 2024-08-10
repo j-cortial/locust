@@ -18,8 +18,8 @@ use crate::{
     compiler::compile,
     debug::disassemble_instruction,
     object::{
-        Intern, NativeFn, Obj, ObjClass, ObjClosure, ObjFunction, ObjInstance, ObjNative,
-        ObjString, ObjUpvalue, UpvalueLocation,
+        Intern, NativeFn, Obj, ObjBoundMethod, ObjClass, ObjClosure, ObjFunction, ObjInstance,
+        ObjNative, ObjString, ObjUpvalue, UpvalueLocation,
     },
     table::Table,
     value::ValueContent,
@@ -241,11 +241,15 @@ impl VM {
                     if let Value::Obj(ref obj) = value {
                         if let Obj::Instance(instance) = obj {
                             let name = Self::read_string(&mut frame);
-                            if let Some(value) = GcCell::borrow(&instance).fields.get(name.clone())
-                            {
+                            let instance = GcCell::borrow(&instance);
+                            if let Some(value) = instance.fields.get(name.clone()) {
                                 frame.stack_mut().pop(); // Instance
                                 frame.stack_mut().push(value.clone());
-                            } else {
+                            } else if !Self::bind_method(
+                                &mut frame,
+                                instance.class.clone(),
+                                name.clone(),
+                            ) {
                                 Self::runtime_error(
                                     &mut frame,
                                     &format!("Undefined property '{}'", name),
@@ -530,6 +534,9 @@ impl VM {
     fn call_value(mut frame: CallFrame, callee: Value, arg_count: u8) -> bool {
         if let Value::Obj(ref callee) = callee {
             match callee {
+                Obj::BoundMethod(callee) => {
+                    return Self::call(frame, callee.method.clone(), arg_count);
+                }
                 Obj::Class(callee) => {
                     let stack_top = frame.stack().count();
                     let slot = stack_top - arg_count as usize - 1;
@@ -555,6 +562,29 @@ impl VM {
         }
         Self::runtime_error(&mut frame, "Can only call functions and classes");
         false
+    }
+
+    fn bind_method(
+        frame: &mut CallFrame,
+        class: Gc<GcCell<ObjClass>>,
+        name: Rc<ObjString>,
+    ) -> bool {
+        let class = GcCell::borrow(&class);
+        let method = class.methods.get(name.clone());
+        match method {
+            None => {
+                Self::runtime_error(frame, &format!("Undefined property '{}'", name));
+                false
+            }
+            Some(method) => {
+                let method = method.as_obj().as_obj_closure_gc();
+                let receiver = frame.stack().peek(0).unwrap();
+                let bound = Obj::BoundMethod(Gc::new(ObjBoundMethod::new(receiver, method)));
+                frame.stack_mut().pop();
+                frame.stack_mut().push(Value::Obj(bound));
+                true
+            }
+        }
     }
 
     fn capture_upvalue(

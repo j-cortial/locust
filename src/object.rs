@@ -9,6 +9,7 @@ use crate::value::Value;
 
 #[derive(Debug, Clone, Trace, Finalize)]
 pub enum Obj {
+    BoundMethod(Gc<ObjBoundMethod>),
     Class(Gc<GcCell<ObjClass>>),
     Closure(Gc<ObjClosure>),
     Function(#[unsafe_ignore_trace] Rc<ObjFunction>),
@@ -20,6 +21,7 @@ pub enum Obj {
 impl Display for Obj {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Obj::BoundMethod(o) => write!(f, "{}", o.method.function),
             Obj::Class(o) => write!(f, "{}", o.borrow().name),
             Obj::Closure(o) => write!(f, "{}", o.function),
             Obj::Function(o) => write!(f, "{}", o),
@@ -61,6 +63,20 @@ impl Obj {
 
     pub fn as_obj_function_rc(&self) -> Rc<ObjFunction> {
         self.as_obj_function_rc_ref().clone()
+    }
+
+    fn as_obj_closure_gc_ref(&self) -> &Gc<ObjClosure> {
+        match self {
+            Self::Closure(func) => {
+                return func;
+            }
+            _ => {}
+        }
+        panic!();
+    }
+
+    pub fn as_obj_closure_gc(&self) -> Gc<ObjClosure> {
+        self.as_obj_closure_gc_ref().clone()
     }
 
     fn as_obj_class_gc_ref(&self) -> &Gc<GcCell<ObjClass>> {
@@ -238,5 +254,17 @@ impl ObjInstance {
             class,
             fields: Default::default(),
         }
+    }
+}
+
+#[derive(Debug, Trace, Finalize)]
+pub struct ObjBoundMethod {
+    pub receiver: Value,
+    pub method: Gc<ObjClosure>,
+}
+
+impl ObjBoundMethod {
+    pub fn new(receiver: Value, method: Gc<ObjClosure>) -> Self {
+        Self { receiver, method }
     }
 }
