@@ -112,6 +112,7 @@ pub struct VM {
     stack: ValueStack<STACK_MAX>,
     globals: Table,
     strings: Table,
+    init_string: Rc<ObjString>,
     open_upvalues: BTreeMap<usize, Gc<GcCell<ObjUpvalue>>>,
 }
 
@@ -124,11 +125,14 @@ pub enum InterpretResult {
 
 impl VM {
     pub fn new() -> Self {
+        let mut strings = Default::default();
+        let init_string = ObjString::from_u8(&mut strings, b"init");
         let mut res = Self {
             frames: Default::default(),
             stack: Default::default(),
             globals: Default::default(),
-            strings: Default::default(),
+            strings,
+            init_string,
             open_upvalues: Default::default(),
         };
         let mut stack = ValueSlice::new(&mut res.stack, 0);
@@ -360,7 +364,7 @@ impl VM {
                 OP_CALL => {
                     let arg_count = Self::read_byte(&mut frame);
                     let function = frame.stack().peek(arg_count as usize).unwrap();
-                    if !Self::call_value(frame, function, arg_count) {
+                    if !Self::call_value(&self.init_string, frame, function, arg_count) {
                         return InterpretResult::RuntimeError;
                     }
                     frame = self.frames.active_frame(&mut self.stack);
@@ -531,7 +535,12 @@ impl VM {
             ))));
     }
 
-    fn call_value(mut frame: CallFrame, callee: Value, arg_count: u8) -> bool {
+    fn call_value(
+        init_string: &Rc<ObjString>,
+        mut frame: CallFrame,
+        callee: Value,
+        arg_count: u8,
+    ) -> bool {
         if let Value::Obj(ref callee) = callee {
             match callee {
                 Obj::BoundMethod(bound) => {
@@ -546,6 +555,17 @@ impl VM {
                     frame.stack_mut()[slot] = Value::Obj(Obj::Instance(Gc::new(GcCell::new(
                         ObjInstance::new(callee.clone()),
                     ))));
+                    if let Some(initializer) = callee.borrow().methods.get(init_string.clone())
+                    {
+                        let initializer = initializer.as_obj().as_obj_closure_gc();
+                        return Self::call(frame, initializer, arg_count);
+                    } else if arg_count != 0 {
+                        Self::runtime_error(
+                            &mut frame,
+                            &format!("Expected 0 arguments but got {}", arg_count),
+                        );
+                        return false;
+                    }
                     return true;
                 }
                 Obj::Closure(callee) => {

@@ -141,7 +141,15 @@ impl<'s, 'a: 's> Parser<'s, 'a> {
     }
 
     fn emit_return(&mut self) {
-        self.emit_bytes(OP_NIL, OP_RETURN);
+        match self.compiler.function_type {
+            FunctionType::Initializer => {
+                self.emit_bytes(OP_GET_LOCAL, 0);
+            }
+            _ => {
+                self.emit_byte(OP_NIL);
+            }
+        };
+        self.emit_byte(OP_RETURN);
     }
 
     fn make_constant(&mut self, value: Value) -> u8 {
@@ -510,7 +518,11 @@ impl<'s, 'a: 's> Parser<'s, 'a> {
         self.consume(TokenType::Identifier, "Expect method name");
         let constant = self.identifier_constant(&self.previous.unwrap());
 
-        let kind = FunctionType::Method;
+        let kind = if self.previous.unwrap().span == b"init" {
+            FunctionType::Initializer
+        } else {
+            FunctionType::Method
+        };
         self.function(kind);
         self.emit_bytes(OP_METHOD, constant);
     }
@@ -648,6 +660,9 @@ impl<'s, 'a: 's> Parser<'s, 'a> {
         if self.match_token(TokenType::SemiColon) {
             self.emit_return();
         } else {
+            if self.compiler.function_type == FunctionType::Initializer {
+                self.error("Cannot return a value from an initializer");
+            }
             self.expression();
             self.consume(TokenType::SemiColon, "Expect ';' after return value");
             self.emit_byte(OP_RETURN);
@@ -873,6 +888,7 @@ impl Upvalue {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum FunctionType {
     Function,
+    Initializer,
     Method,
     Script,
 }
