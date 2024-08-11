@@ -49,6 +49,7 @@ pub fn disassemble_instruction(chunk: &Chunk, offset: usize) -> usize {
         OP_JUMP_IF_FALSE => jump_instruction("OP_JUMP_IF_FALSE", 1, chunk, offset),
         OP_LOOP => jump_instruction("OP_LOOP", -1, chunk, offset),
         OP_CALL => byte_instruction("OP_CALL", chunk, offset),
+        OP_INVOKE => invoke_instruction("OP_INVOKE", chunk, offset),
         OP_CLOSURE => {
             let mut current_offset = offset + 1;
             let constant = chunk[current_offset];
@@ -80,9 +81,21 @@ pub fn disassemble_instruction(chunk: &Chunk, offset: usize) -> usize {
 
 fn constant_instruction(name: &str, chunk: &Chunk, offset: usize) -> usize {
     let constant = chunk[offset + 1];
-    let value = chunk.constants()[constant as usize].clone();
-    println!("{name:16} {constant:4} '{value}'");
+    println!(
+        "{name:16} {constant:4} '{}'",
+        chunk.constants()[constant as usize]
+    );
     offset + 2
+}
+
+fn invoke_instruction(name: &str, chunk: &Chunk, offset: usize) -> usize {
+    let constant = chunk[offset + 1];
+    let arg_count = chunk[offset + 2];
+    println!(
+        "{name:16} ({arg_count} args) {constant:4} '{}'",
+        chunk.constants()[constant as usize]
+    );
+    offset + 3
 }
 
 fn simple_instruction(name: &str, offset: usize) -> usize {

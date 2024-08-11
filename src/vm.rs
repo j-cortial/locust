@@ -11,8 +11,8 @@ use crate::{
     chunk::{
         Chunk, OP_ADD, OP_CALL, OP_CLASS, OP_CLOSE_UPVALUE, OP_CLOSURE, OP_CONSTANT,
         OP_DEFINE_GLOBAL, OP_DIVIDE, OP_EQUAL, OP_FALSE, OP_GET_GLOBAL, OP_GET_LOCAL,
-        OP_GET_PROPERTY, OP_GET_UPVALUE, OP_GREATER, OP_JUMP, OP_JUMP_IF_FALSE, OP_LESS, OP_LOOP,
-        OP_METHOD, OP_MULTIPLY, OP_NEGATE, OP_NIL, OP_NOT, OP_POP, OP_PRINT, OP_RETURN,
+        OP_GET_PROPERTY, OP_GET_UPVALUE, OP_GREATER, OP_INVOKE, OP_JUMP, OP_JUMP_IF_FALSE, OP_LESS,
+        OP_LOOP, OP_METHOD, OP_MULTIPLY, OP_NEGATE, OP_NIL, OP_NOT, OP_POP, OP_PRINT, OP_RETURN,
         OP_SET_GLOBAL, OP_SET_LOCAL, OP_SET_PROPERTY, OP_SET_UPVALUE, OP_SUBTRACT, OP_TRUE,
     },
     compiler::compile,
@@ -369,6 +369,14 @@ impl VM {
                     }
                     frame = self.frames.active_frame(&mut self.stack);
                 }
+                OP_INVOKE => {
+                    let method = Self::read_string(&mut frame);
+                    let arg_count = Self::read_byte(&mut frame);
+                    if !Self::invoke(&self.init_string, frame, method, arg_count) {
+                        return InterpretResult::RuntimeError;
+                    }
+                    frame = self.frames.active_frame(&mut self.stack);
+                }
                 OP_CLOSURE => {
                     let function = Self::read_constant(&mut frame).as_function_rc();
                     let closure = Gc::new(ObjClosure::new(function));
@@ -555,8 +563,7 @@ impl VM {
                     frame.stack_mut()[slot] = Value::Obj(Obj::Instance(Gc::new(GcCell::new(
                         ObjInstance::new(callee.clone()),
                     ))));
-                    if let Some(initializer) = callee.borrow().methods.get(init_string.clone())
-                    {
+                    if let Some(initializer) = callee.borrow().methods.get(init_string.clone()) {
                         let initializer = initializer.as_obj().as_obj_closure_gc();
                         return Self::call(frame, initializer, arg_count);
                     } else if arg_count != 0 {
@@ -584,6 +591,51 @@ impl VM {
             }
         }
         Self::runtime_error(&mut frame, "Can only call functions and classes");
+        false
+    }
+
+    fn invoke_from_class(
+        mut frame: CallFrame,
+        class: Gc<GcCell<ObjClass>>,
+        name: Rc<ObjString>,
+        arg_count: u8,
+    ) -> bool {
+        let class = class.borrow();
+        let method = class.methods.get(name.clone());
+        match method {
+            Some(method) => {
+                let method = method.as_obj().as_obj_closure_gc();
+                Self::call(frame, method, arg_count)
+            }
+            None => {
+                Self::runtime_error(&mut frame, &format!("Undefined property '{}'", name));
+                false
+            }
+        }
+    }
+
+    fn invoke(
+        init_string: &Rc<ObjString>,
+        mut frame: CallFrame,
+        name: Rc<ObjString>,
+        arg_count: u8,
+    ) -> bool {
+        let receiver = frame.stack().peek(arg_count as usize).unwrap();
+        if let Value::Obj(Obj::Instance(ref instance)) = receiver {
+            if let Some(value) = instance.borrow().fields.get(name.clone()) {
+                let stack_top = frame.stack().count();
+                let slot = stack_top - arg_count as usize - 1;
+                frame.stack_mut()[slot] = value.clone();
+                return Self::call_value(init_string, frame, value.clone(), arg_count);
+            }
+            return Self::invoke_from_class(
+                frame,
+                instance.borrow().class.clone(),
+                name,
+                arg_count,
+            );
+        }
+        Self::runtime_error(&mut frame, "Only instances have methods");
         false
     }
 
