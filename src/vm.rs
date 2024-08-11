@@ -11,9 +11,10 @@ use crate::{
     chunk::{
         Chunk, OP_ADD, OP_CALL, OP_CLASS, OP_CLOSE_UPVALUE, OP_CLOSURE, OP_CONSTANT,
         OP_DEFINE_GLOBAL, OP_DIVIDE, OP_EQUAL, OP_FALSE, OP_GET_GLOBAL, OP_GET_LOCAL,
-        OP_GET_PROPERTY, OP_GET_UPVALUE, OP_GREATER, OP_INVOKE, OP_JUMP, OP_JUMP_IF_FALSE, OP_LESS,
-        OP_LOOP, OP_METHOD, OP_MULTIPLY, OP_NEGATE, OP_NIL, OP_NOT, OP_POP, OP_PRINT, OP_RETURN,
-        OP_SET_GLOBAL, OP_SET_LOCAL, OP_SET_PROPERTY, OP_SET_UPVALUE, OP_SUBTRACT, OP_TRUE,
+        OP_GET_PROPERTY, OP_GET_UPVALUE, OP_GREATER, OP_INHERIT, OP_INVOKE, OP_JUMP,
+        OP_JUMP_IF_FALSE, OP_LESS, OP_LOOP, OP_METHOD, OP_MULTIPLY, OP_NEGATE, OP_NIL, OP_NOT,
+        OP_POP, OP_PRINT, OP_RETURN, OP_SET_GLOBAL, OP_SET_LOCAL, OP_SET_PROPERTY, OP_SET_UPVALUE,
+        OP_SUBTRACT, OP_TRUE,
     },
     compiler::compile,
     debug::disassemble_instruction,
@@ -431,6 +432,19 @@ impl VM {
                         .push(Value::Obj(Obj::Class(Gc::new(GcCell::new(ObjClass::new(
                             name,
                         ))))));
+                }
+                OP_INHERIT => {
+                    let super_class = frame.stack().peek(1).unwrap();
+                    if let Value::Obj(Obj::Class(ref super_class)) = super_class {
+                        let super_class = super_class.borrow();
+                        let sub_class = frame.stack().peek(0).unwrap().as_obj().as_obj_class_gc();
+                        let mut sub_class = GcCell::borrow_mut(&sub_class);
+                        sub_class.methods.add(&super_class.methods);
+                        frame.stack_mut().pop(); // Subclass
+                    } else {
+                        Self::runtime_error(&mut frame, "Superclass must be a class");
+                        return InterpretResult::RuntimeError;
+                    }
                 }
                 OP_METHOD => {
                     let name = Self::read_string(&mut frame);

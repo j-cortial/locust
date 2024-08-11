@@ -15,6 +15,11 @@ impl Table {
         self.0.insert(Key(key), value)
     }
 
+    pub fn add(&mut self, other: &Self) {
+        self.0
+            .extend(other.0.iter().map(|(k, v)| (k.clone(), v.clone())));
+    }
+
     pub fn get(&self, key: Rc<ObjString>) -> Option<&Value> {
         self.0.get(&Key(key))
     }
@@ -64,6 +69,7 @@ impl Intern for Table {
                 res
             }
         }
-        .0.clone()
+        .0
+        .clone()
     }
 }

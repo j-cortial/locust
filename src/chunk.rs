@@ -37,6 +37,7 @@ pub enum OpCode {
     OpCloseUpvalue,
     OpReturn,
     OpClass,
+    OpInherit,
     OpMethod,
 }
 
@@ -73,6 +74,7 @@ pub const OP_CLOSURE: u8 = OpCode::OpClosure as u8;
 pub const OP_CLOSE_UPVALUE: u8 = OpCode::OpCloseUpvalue as u8;
 pub const OP_RETURN: u8 = OpCode::OpReturn as u8;
 pub const OP_CLASS: u8 = OpCode::OpClass as u8;
+pub const OP_INHERIT: u8 = OpCode::OpInherit as u8;
 pub const OP_METHOD: u8 = OpCode::OpMethod as u8;
 
 #[derive(Debug, Default, Clone)]

@@ -5,8 +5,8 @@ use crate::{
     chunk::{
         OP_ADD, OP_CALL, OP_CLASS, OP_CLOSE_UPVALUE, OP_CLOSURE, OP_CONSTANT, OP_DEFINE_GLOBAL,
         OP_DIVIDE, OP_EQUAL, OP_FALSE, OP_GET_GLOBAL, OP_GET_LOCAL, OP_GET_PROPERTY,
-        OP_GET_UPVALUE, OP_GREATER, OP_INVOKE, OP_JUMP, OP_JUMP_IF_FALSE, OP_LESS, OP_LOOP,
-        OP_METHOD, OP_MULTIPLY, OP_NEGATE, OP_NIL, OP_NOT, OP_POP, OP_PRINT, OP_RETURN,
+        OP_GET_UPVALUE, OP_GREATER, OP_INHERIT, OP_INVOKE, OP_JUMP, OP_JUMP_IF_FALSE, OP_LESS,
+        OP_LOOP, OP_METHOD, OP_MULTIPLY, OP_NEGATE, OP_NIL, OP_NOT, OP_POP, OP_PRINT, OP_RETURN,
         OP_SET_GLOBAL, OP_SET_LOCAL, OP_SET_PROPERTY, OP_SET_UPVALUE, OP_SUBTRACT, OP_TRUE,
     },
     debug::disassemble,
@@ -542,6 +542,18 @@ impl<'s, 'a: 's> Parser<'s, 'a> {
 
         let class_compiler = Box::new(ClassCompiler::new(self.current_class.take()));
         self.current_class = Some(class_compiler);
+
+        if self.match_token(TokenType::Less) {
+            self.consume(TokenType::Identifier, "Expect superclass name");
+            self.variable(false);
+
+            if class_name.identifier_equal(&self.previous.unwrap()) {
+                self.error("A class cannot inherit from itself");
+            }
+
+            self.named_variable(class_name, false);
+            self.emit_byte(OP_INHERIT);
+        }
 
         self.named_variable(class_name, false);
         self.consume(TokenType::LeftBrace, "Expect '{' after class body");
