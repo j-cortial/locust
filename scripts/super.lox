@@ -1,0 +1,18 @@
+class A {
+    init(message) {
+        this.message = message;
+    }
+    method() { print this.message; }
+}
+
+class B < A {
+    init(message) {
+        super.init(message);
+    }
+    method () {
+        var closure = super.method;
+        closure();
+    }
+}
+
+B("hello").method();

@@ -11,7 +11,7 @@ use crate::{
     chunk::{
         Chunk, OP_ADD, OP_CALL, OP_CLASS, OP_CLOSE_UPVALUE, OP_CLOSURE, OP_CONSTANT,
         OP_DEFINE_GLOBAL, OP_DIVIDE, OP_EQUAL, OP_FALSE, OP_GET_GLOBAL, OP_GET_LOCAL,
-        OP_GET_PROPERTY, OP_GET_UPVALUE, OP_GREATER, OP_INHERIT, OP_INVOKE, OP_JUMP,
+        OP_GET_PROPERTY, OP_GET_SUPER, OP_GET_UPVALUE, OP_GREATER, OP_INHERIT, OP_INVOKE, OP_JUMP,
         OP_JUMP_IF_FALSE, OP_LESS, OP_LOOP, OP_METHOD, OP_MULTIPLY, OP_NEGATE, OP_NIL, OP_NOT,
         OP_POP, OP_PRINT, OP_RETURN, OP_SET_GLOBAL, OP_SET_LOCAL, OP_SET_PROPERTY, OP_SET_UPVALUE,
         OP_SUBTRACT, OP_TRUE,
@@ -282,6 +282,15 @@ impl VM {
                     }
                     Self::runtime_error(&mut frame, "Only instances have fields");
                     return InterpretResult::RuntimeError;
+                }
+                OP_GET_SUPER => {
+                    let name = Self::read_string(&mut frame);
+                    let super_class = frame.stack_mut().pop();
+                    let super_class = super_class.as_obj().as_obj_class_gc();
+
+                    if !Self::bind_method(&mut frame, super_class, name) {
+                        return InterpretResult::RuntimeError;
+                    }
                 }
                 OP_EQUAL => {
                     let b = frame.stack_mut().pop();

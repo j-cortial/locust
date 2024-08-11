@@ -81,19 +81,11 @@ impl<'t, 'a: 't> Scanner<'a> {
     }
 
     fn make_token(&self, kind: TokenType) -> Token<'t> {
-        Token {
-            kind,
-            span: &self.source[self.start..self.current],
-            line: self.line,
-        }
+        Token::new(kind, &self.source[self.start..self.current], self.line)
     }
 
     fn error_token(&self, message: &'static [u8]) -> Token<'t> {
-        Token {
-            kind: TokenType::Error,
-            span: message,
-            line: self.line,
-        }
+        Token::new(TokenType::Error, message, self.line)
     }
 
     fn identifier(&mut self) -> Token<'t> {
@@ -260,6 +252,14 @@ pub struct Token<'a> {
 }
 
 impl<'a> Token<'a> {
+    pub fn new(kind: TokenType, span: &'a [u8], line: i32) -> Self {
+        Self { kind, span, line }
+    }
+
+    pub fn synthetic(kind: TokenType, span: &'a [u8]) -> Self {
+        Self::new(kind, span, -1)
+    }
+
     pub fn identifier_equal(&self, other: &Self) -> bool {
         self.span == other.span
     }

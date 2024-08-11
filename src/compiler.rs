@@ -4,7 +4,7 @@ use num_traits::{FromPrimitive, ToPrimitive};
 use crate::{
     chunk::{
         OP_ADD, OP_CALL, OP_CLASS, OP_CLOSE_UPVALUE, OP_CLOSURE, OP_CONSTANT, OP_DEFINE_GLOBAL,
-        OP_DIVIDE, OP_EQUAL, OP_FALSE, OP_GET_GLOBAL, OP_GET_LOCAL, OP_GET_PROPERTY,
+        OP_DIVIDE, OP_EQUAL, OP_FALSE, OP_GET_GLOBAL, OP_GET_LOCAL, OP_GET_PROPERTY, OP_GET_SUPER,
         OP_GET_UPVALUE, OP_GREATER, OP_INHERIT, OP_INVOKE, OP_JUMP, OP_JUMP_IF_FALSE, OP_LESS,
         OP_LOOP, OP_METHOD, OP_MULTIPLY, OP_NEGATE, OP_NIL, OP_NOT, OP_POP, OP_PRINT, OP_RETURN,
         OP_SET_GLOBAL, OP_SET_LOCAL, OP_SET_PROPERTY, OP_SET_UPVALUE, OP_SUBTRACT, OP_TRUE,
@@ -344,6 +344,26 @@ impl<'s, 'a: 's> Parser<'s, 'a> {
         self.named_variable(self.previous.unwrap(), can_assign);
     }
 
+    fn super_(&mut self, _can_assign: bool) {
+        match &self.current_class {
+            None => {
+                self.error("Cannot user 'super' outside of a class");
+            }
+            Some(current_class) => {
+                if !current_class.has_super_class {
+                    self.error("Cannot use 'super' in a class with no superclass");
+                }
+            }
+        };
+        self.consume(TokenType::Dot, "Expect '.' after 'super'");
+        self.consume(TokenType::Identifier, "Expect superclass method name");
+        let name = self.identifier_constant(&self.previous.unwrap());
+
+        self.named_variable(Token::synthetic(TokenType::This, b"this"), false);
+        self.named_variable(Token::synthetic(TokenType::Super, b"super"), false);
+        self.emit_bytes(OP_GET_SUPER, name);
+    }
+
     fn this(&mut self, _can_assign: bool) {
         if self.current_class.is_none() {
             self.error("Cannot use 'this' outside of a class");
@@ -551,8 +571,13 @@ impl<'s, 'a: 's> Parser<'s, 'a> {
                 self.error("A class cannot inherit from itself");
             }
 
+            self.begin_scope();
+            self.add_local(&Token::synthetic(TokenType::Super, b"super"));
+            self.define_variable(0);
+
             self.named_variable(class_name, false);
             self.emit_byte(OP_INHERIT);
+            self.current_class.as_mut().unwrap().has_super_class = true;
         }
 
         self.named_variable(class_name, false);
@@ -562,6 +587,10 @@ impl<'s, 'a: 's> Parser<'s, 'a> {
         }
         self.consume(TokenType::RightBrace, "Expect '}' after class body");
         self.emit_byte(OP_POP);
+
+        if self.current_class.as_ref().unwrap().has_super_class {
+            self.end_scope();
+        }
 
         let class_compiler = self.current_class.as_mut().unwrap().enclosing.take();
         self.current_class = class_compiler;
@@ -800,7 +829,7 @@ fn get_rule<'a, 'c, 'd>(token_type: TokenType) -> ParseRule<'a, 'c, 'd> {
         parse_rule(None, Some(Parser::or), Precedence::Or),
         parse_rule(None, None, Precedence::None),
         parse_rule(None, None, Precedence::None),
-        parse_rule(None, None, Precedence::None),
+        parse_rule(Some(Parser::super_), None, Precedence::None),
         parse_rule(Some(Parser::this), None, Precedence::None),
         parse_rule(Some(Parser::literal), None, Precedence::None),
         parse_rule(None, None, Precedence::None),
@@ -928,15 +957,14 @@ impl<'l> Compiler<'l> {
             function: Box::new(ObjFunction::new()),
             function_type,
             locals: vec![Local::new(
-                Token {
-                    kind: TokenType::This,
-                    span: if function_type != FunctionType::Function {
+                Token::synthetic(
+                    TokenType::This,
+                    if function_type != FunctionType::Function {
                         b"this"
                     } else {
                         b""
                     },
-                    line: 0,
-                },
+                ),
                 0,
                 false,
             )],
@@ -1007,10 +1035,14 @@ impl<'l> Compiler<'l> {
 #[derive(Debug, Default)]
 struct ClassCompiler {
     enclosing: Option<Box<ClassCompiler>>,
+    has_super_class: bool,
 }
 
 impl ClassCompiler {
     fn new(enclosing: Option<Box<ClassCompiler>>) -> Self {
-        Self { enclosing }
+        Self {
+            enclosing,
+            has_super_class: false,
+        }
     }
 }

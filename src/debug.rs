@@ -35,6 +35,7 @@ pub fn disassemble_instruction(chunk: &Chunk, offset: usize) -> usize {
         OP_SET_UPVALUE => byte_instruction("OP_SET_UPVALUE", chunk, offset),
         OP_GET_PROPERTY => constant_instruction("OP_GET_PROPERTY", chunk, offset),
         OP_SET_PROPERTY => constant_instruction("OP_SET_PROPERTY", chunk, offset),
+        OP_GET_SUPER => constant_instruction("OP_GET_SUPER", chunk, offset),
         OP_EQUAL => simple_instruction("OP_EQUAL", offset),
         OP_GREATER => simple_instruction("OP_GREATER", offset),
         OP_LESS => simple_instruction("OP_LESS", offset),
