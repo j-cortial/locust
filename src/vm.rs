@@ -14,7 +14,7 @@ use crate::{
         OP_GET_PROPERTY, OP_GET_SUPER, OP_GET_UPVALUE, OP_GREATER, OP_INHERIT, OP_INVOKE, OP_JUMP,
         OP_JUMP_IF_FALSE, OP_LESS, OP_LOOP, OP_METHOD, OP_MULTIPLY, OP_NEGATE, OP_NIL, OP_NOT,
         OP_POP, OP_PRINT, OP_RETURN, OP_SET_GLOBAL, OP_SET_LOCAL, OP_SET_PROPERTY, OP_SET_UPVALUE,
-        OP_SUBTRACT, OP_TRUE,
+        OP_SUBTRACT, OP_SUPER_INVOKE, OP_TRUE,
     },
     compiler::compile,
     debug::disassemble_instruction,
@@ -383,6 +383,16 @@ impl VM {
                     let method = Self::read_string(&mut frame);
                     let arg_count = Self::read_byte(&mut frame);
                     if !Self::invoke(&self.init_string, frame, method, arg_count) {
+                        return InterpretResult::RuntimeError;
+                    }
+                    frame = self.frames.active_frame(&mut self.stack);
+                }
+                OP_SUPER_INVOKE => {
+                    let method = Self::read_string(&mut frame);
+                    let arg_count = Self::read_byte(&mut frame);
+                    let super_class = frame.stack_mut().pop();
+                    let super_class = super_class.as_obj().as_obj_class_gc();
+                    if !Self::invoke_from_class(frame, super_class, method, arg_count) {
                         return InterpretResult::RuntimeError;
                     }
                     frame = self.frames.active_frame(&mut self.stack);

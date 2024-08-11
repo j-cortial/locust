@@ -7,7 +7,8 @@ use crate::{
         OP_DIVIDE, OP_EQUAL, OP_FALSE, OP_GET_GLOBAL, OP_GET_LOCAL, OP_GET_PROPERTY, OP_GET_SUPER,
         OP_GET_UPVALUE, OP_GREATER, OP_INHERIT, OP_INVOKE, OP_JUMP, OP_JUMP_IF_FALSE, OP_LESS,
         OP_LOOP, OP_METHOD, OP_MULTIPLY, OP_NEGATE, OP_NIL, OP_NOT, OP_POP, OP_PRINT, OP_RETURN,
-        OP_SET_GLOBAL, OP_SET_LOCAL, OP_SET_PROPERTY, OP_SET_UPVALUE, OP_SUBTRACT, OP_TRUE,
+        OP_SET_GLOBAL, OP_SET_LOCAL, OP_SET_PROPERTY, OP_SET_UPVALUE, OP_SUBTRACT, OP_SUPER_INVOKE,
+        OP_TRUE,
     },
     debug::disassemble,
     object::{Intern, Obj, ObjFunction, ObjString},
@@ -360,8 +361,16 @@ impl<'s, 'a: 's> Parser<'s, 'a> {
         let name = self.identifier_constant(&self.previous.unwrap());
 
         self.named_variable(Token::synthetic(TokenType::This, b"this"), false);
-        self.named_variable(Token::synthetic(TokenType::Super, b"super"), false);
-        self.emit_bytes(OP_GET_SUPER, name);
+        let super_token = Token::synthetic(TokenType::Super, b"super");
+        if self.match_token(TokenType::LeftParen) {
+            let arg_count = self.argument_list();
+            self.named_variable(super_token, false);
+            self.emit_bytes(OP_SUPER_INVOKE, name);
+            self.emit_byte(arg_count);
+        } else {
+            self.named_variable(super_token, false);
+            self.emit_bytes(OP_GET_SUPER, name);
+        }
     }
 
     fn this(&mut self, _can_assign: bool) {

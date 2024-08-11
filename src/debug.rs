@@ -51,6 +51,7 @@ pub fn disassemble_instruction(chunk: &Chunk, offset: usize) -> usize {
         OP_LOOP => jump_instruction("OP_LOOP", -1, chunk, offset),
         OP_CALL => byte_instruction("OP_CALL", chunk, offset),
         OP_INVOKE => invoke_instruction("OP_INVOKE", chunk, offset),
+        OP_SUPER_INVOKE => invoke_instruction("OP_SUPER_INVOKE", chunk, offset),
         OP_CLOSURE => {
             let mut current_offset = offset + 1;
             let constant = chunk[current_offset];
